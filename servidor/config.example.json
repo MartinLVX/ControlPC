@@ -1,6 +1,8 @@
 {
   "puerto": 8765,
   "pin": "",
+  "multimedia_app": "Spotify",
+  "multimedia_abrir": "spotify:",
   "apps": [
     {
       "id": "navegador",

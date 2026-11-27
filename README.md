@@ -3,7 +3,7 @@
 Controla tu PC con Windows desde el iPhone, en tu misma red WiFi. La app tiene tres pestañas:
 
 - **Aplicaciones:** abre los programas de tu lista, cada uno con su icono.
-- **Multimedia:** muestra lo que suena en la PC (título, artista, carátula y app), con anterior, reproducir/pausar, siguiente y volumen.
+- **Multimedia:** enlazada a Spotify de escritorio. Muestra la canción (título, artista y carátula), con anterior, reproducir/pausar y siguiente que van directo a Spotify aunque esté minimizado. Si Spotify está cerrado, hay un botón para abrirlo. El volumen se mueve de 1 en 1 (o con la barra) y muestra el nivel exacto.
 - **Equipo:** bloquear, suspender, reiniciar y apagar.
 
 Son dos partes:
@@ -47,6 +47,8 @@ Todo está en `servidor\config.json` (se crea en la primera ejecución). Despué
 {
   "puerto": 8765,
   "pin": "482913",
+  "multimedia_app": "Spotify",
+  "multimedia_abrir": "spotify:",
   "apps": [
     { "id": "chrome",  "nombre": "Chrome",  "comando": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" },
     { "id": "spotify", "nombre": "Spotify", "comando": "%APPDATA%\\Spotify\\Spotify.exe" },
@@ -57,6 +59,8 @@ Todo está en `servidor\config.json` (se crea en la primera ejecución). Despué
 ```
 
 - **`comando`** puede ser la ruta a un `.exe`, un acceso directo `.lnk`, un documento o una URL. Acepta variables como `%APPDATA%` o `%USERPROFILE%`. Recuerda escribir las barras invertidas dobles (`\\`).
+- **`multimedia_app`**: la app que controla la pestaña Multimedia (por defecto `Spotify`). Si la dejas vacía (`""`), controla lo que Windows considere activo (por ejemplo YouTube en el navegador).
+- **`multimedia_abrir`**: qué abrir con el botón "Abrir Spotify". `spotify:` sirve para Spotify de la Tienda o del instalador.
 - **`argumentos`** es opcional, para pasarle cosas al programa.
 - **`icono`** es opcional. Sin él, se usa el icono que Windows muestra para ese programa (o el favicon, si es una página web). Puedes poner la ruta a una imagen `.png`/`.jpg` propia, o a un `.exe`/`.ico` del que sacar el icono. Útil cuando el comando es algo como `code`, que no apunta directo al programa.
 - Los iconos se guardan en `servidor\cache\`. Si cambias uno y no se actualiza, borra esa carpeta.
@@ -72,8 +76,8 @@ Todo está en `servidor\config.json` (se crea en la primera ejecución). Despué
 ## Notas
 
 - **Suspender:** si Windows tiene la hibernación activada, el botón hiberna en lugar de suspender. Para que suspenda, ejecuta `powercfg /hibernate off` en una terminal de administrador.
-- **Volumen:** cada toque sube o baja un 10 %.
-- **Multimedia:** funciona con las apps que aparecen en el control de medios de Windows (Spotify, el navegador con YouTube, el Reproductor multimedia, etc.). Requiere Windows 10 u 11.
+- **Volumen:** cada toque sube o baja 1. Mantén presionado para que siga cambiando, o usa la barra. Cambia el volumen general de Windows (el del altavoz predeterminado).
+- **Multimedia:** usa los controles de medios de Windows 10 u 11.
 - **Reiniciar y apagar** piden confirmación y se ejecutan un segundo y medio después, sin esperar a que cierres programas.
 - **Registro:** con el arranque automático, los mensajes del servidor quedan en `servidor\controlpc.log`.
 
