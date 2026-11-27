@@ -14,6 +14,8 @@ import subprocess
 import sys
 import queue
 import threading
+import time
+import traceback
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -103,10 +105,11 @@ def _volumen(operacion, *argumentos, tecla=None, **opciones):
             _volumen_simulado["silencio"] = not _volumen_simulado["silencio"]
             _registrar(f"silencio {_volumen_simulado['silencio']}")
         return dict(_volumen_simulado)
-    import volumen  # solo en Windows
     try:
+        import volumen  # solo en Windows
         return getattr(volumen, operacion)(*argumentos, **opciones)
-    except OSError:
+    except Exception:  # noqa: BLE001 - se registra y se usa la tecla de respaldo
+        print(f"[volumen] fallo en {operacion}:\n{traceback.format_exc()}", file=sys.stderr, flush=True)
         if tecla:
             _tecla(tecla)
         return {}
@@ -249,7 +252,7 @@ class _AyudanteMultimedia:
 
     def _arrancar(self):
         self.proceso = subprocess.Popen(
-            self.comando(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            self.comando(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", bufsize=1, creationflags=SIN_VENTANA if sys.platform == "win32" else 0,
         )
         self.respuestas = queue.Queue()
@@ -258,14 +261,31 @@ class _AyudanteMultimedia:
         def leer():
             for linea in proceso.stdout:
                 respuestas.put(linea)
+
+        def errores():  # lo que PowerShell escriba como error va al registro del servidor
+            for linea in proceso.stderr:
+                if linea.strip():
+                    print(f"[multimedia.ps1] {linea.rstrip()}", file=sys.stderr, flush=True)
         threading.Thread(target=leer, daemon=True).start()
-        self._esperar(20)  # primera línea: {"listo": true}
+        threading.Thread(target=errores, daemon=True).start()
+        inicio = self._esperar(20)  # primera línea: {"listo": true}
+        if not inicio or not inicio.get("listo"):
+            print(f"[multimedia.ps1] no arrancó bien: {inicio}", file=sys.stderr, flush=True)
 
     def _esperar(self, segundos):
-        try:
-            return json.loads(self.respuestas.get(timeout=segundos))
-        except (queue.Empty, json.JSONDecodeError):
-            return None
+        """Siguiente respuesta JSON. Las líneas que no son JSON (avisos) se registran y se saltan."""
+        limite = time.monotonic() + segundos
+        while (restante := limite - time.monotonic()) > 0:
+            try:
+                linea = self.respuestas.get(timeout=restante)
+            except queue.Empty:
+                return None
+            try:
+                return json.loads(linea.lstrip("\ufeff"))  # PowerShell puede anteponer la marca BOM
+            except json.JSONDecodeError:
+                if linea.strip():
+                    print(f"[multimedia.ps1] {linea.rstrip()}", file=sys.stderr, flush=True)
+        return None
 
     def _cerrar(self):
         if self.proceso:
