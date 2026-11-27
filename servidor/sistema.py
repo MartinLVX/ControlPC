@@ -157,7 +157,7 @@ def _simulado():
 # El ayudante de PowerShell tarda de 0,5 a 1 s (y más la primera vez), así que se consulta
 # en segundo plano mientras alguien mira la pestaña, y la petición del celular responde
 # al instante con el último dato.
-_ultimo_ps = {"cpu": None, "gpu": None}
+_ultimo_ps = {"cpu": None, "gpu": None, "fallo": False}
 _ultima_peticion = 0.0
 _hilo_fondo = None
 _bloqueo_fondo = threading.Lock()
@@ -169,7 +169,9 @@ def _bucle_fondo():
             componentes(bloquear=True)
         respuesta = _ayudante.pedir("uso", espera=30)
         if respuesta and "error" not in respuesta:
-            _ultimo_ps.update(cpu=respuesta.get("cpu"), gpu=respuesta.get("gpu"))
+            _ultimo_ps.update(cpu=respuesta.get("cpu"), gpu=respuesta.get("gpu"), fallo=False)
+        else:
+            _ultimo_ps["fallo"] = True
         time.sleep(1.5)
 
 
@@ -194,9 +196,11 @@ def uso():
         except Exception as error:  # noqa: BLE001
             print(f"[sistema] {clave}: {error}", file=sys.stderr, flush=True)
             datos[clave] = None
-    # Procesador: la cifra del Administrador de tareas si ya llegó; si no, el tiempo ocupado.
+    # Procesador: la cifra del Administrador de tareas. Mientras llega el primer dato se
+    # devuelve None (la app muestra "–"); solo si PowerShell falla se usa el tiempo ocupado,
+    # que da una cifra más baja.
     datos["cpu"] = _ultimo_ps["cpu"]
-    if datos["cpu"] is None:
+    if datos["cpu"] is None and _ultimo_ps["fallo"]:
         try:
             datos["cpu"] = uso_cpu()
         except Exception:  # noqa: BLE001

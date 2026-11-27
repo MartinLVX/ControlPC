@@ -89,9 +89,10 @@ function Cpu-Utilidad {
     $anterior = $script:cpuAnterior
     $script:cpuAnterior = $actual
     if (-not $anterior) { return $null }
+    # El contador es de tipo PERF_AVERAGE_BULK: ya viene en %, sin multiplicar por 100.
     $delta = $actual.base - $anterior.base
     if ($delta -le 0) { return $null }
-    return [math]::Max(0, [math]::Min(100, [int][math]::Round(100 * ($actual.valor - $anterior.valor) / $delta)))
+    return [math]::Max(0, [math]::Min(100, [int][math]::Round(($actual.valor - $anterior.valor) / $delta)))
 }
 
 function Uso {
