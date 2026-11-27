@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ControlPC</title>
+  <meta name="theme-color" content="#0f1115">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ControlPC">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icono-180.png">
+  <link rel="icon" href="icono-180.png">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <!-- Pantalla del PIN -->
+  <main id="vista-pin" class="vista" hidden>
+    <div class="pin-caja">
+      <img src="icono-180.png" alt="" class="pin-logo">
+      <h1>ControlPC</h1>
+      <p class="tenue">Escribe el PIN que aparece en tu PC.</p>
+      <form id="form-pin">
+        <input id="campo-pin" type="password" inputmode="numeric" autocomplete="current-password"
+               placeholder="PIN" aria-label="PIN" required>
+        <button type="submit" class="boton primario">Entrar</button>
+      </form>
+      <p id="error-pin" class="error" role="alert"></p>
+    </div>
+  </main>
+
+  <!-- Panel de control -->
+  <main id="vista-panel" class="vista" hidden>
+    <header class="cabecera">
+      <div>
+        <h1 id="nombre-equipo">Mi PC</h1>
+        <p class="estado"><span id="punto" class="punto"></span><span id="texto-estado">Conectando…</span></p>
+      </div>
+      <button id="salir" class="boton-texto">Salir</button>
+    </header>
+
+    <section>
+      <h2>Aplicaciones</h2>
+      <div id="apps" class="rejilla"></div>
+    </section>
+
+    <section>
+      <h2>Volumen</h2>
+      <div class="fila">
+        <button class="boton" data-accion="bajar_volumen" aria-label="Bajar volumen">🔉 −</button>
+        <button class="boton" data-accion="silenciar" aria-label="Silenciar">🔇</button>
+        <button class="boton" data-accion="subir_volumen" aria-label="Subir volumen">🔊 +</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Equipo</h2>
+      <div class="rejilla">
+        <button class="boton grande" data-accion="bloquear">🔒<span>Bloquear</span></button>
+        <button class="boton grande" data-accion="suspender" data-confirmar="¿Suspender la PC?">🌙<span>Suspender</span></button>
+        <button class="boton grande aviso" data-accion="reiniciar" data-confirmar="¿Reiniciar la PC? Se cerrará todo lo abierto.">🔄<span>Reiniciar</span></button>
+        <button class="boton grande peligro" data-accion="apagar" data-confirmar="¿Apagar la PC? Se cerrará todo lo abierto.">⏻<span>Apagar</span></button>
+      </div>
+    </section>
+  </main>
+
+  <div id="aviso" class="aviso-flotante" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
