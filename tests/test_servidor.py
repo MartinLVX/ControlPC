@@ -152,6 +152,9 @@ for linea in sys.stdin:
     orden = linea.strip()
     if orden == "colgarse":
         time.sleep(60)
+    elif orden == "con_aviso":
+        print("ADVERTENCIA: algo", flush=True)
+        print("\ufeff" + json.dumps({"orden": orden, "abierta": True}), flush=True)
     elif orden == "morir":
         sys.exit(1)
     else:
@@ -174,6 +177,9 @@ class PruebasAyudanteMultimedia(unittest.TestCase):
         proceso = self.ayudante.proceso
         self.assertEqual(self.ayudante.pedir("siguiente")["orden"], "siguiente")
         self.assertIs(self.ayudante.proceso, proceso)
+
+    def test_ignora_lineas_que_no_son_json(self):
+        self.assertEqual(self.ayudante.pedir("con_aviso")["orden"], "con_aviso")
 
     def test_se_recupera_si_el_proceso_muere(self):
         self.ayudante.pedir("estado")

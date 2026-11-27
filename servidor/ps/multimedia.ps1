@@ -29,6 +29,10 @@ function Esperar($operacion, [Type]$tipo) {
 $tipoGestor = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
 $tipoPropiedades = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties, Windows.Media.Control, ContentType = WindowsRuntime]
 $tipoFlujo = [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
+$tipoEntrada = [Windows.Storage.Streams.IInputStream, Windows.Storage.Streams, ContentType = WindowsRuntime]
+# PowerShell recibe el flujo como __ComObject y no sabe elegir la sobrecarga de AsStreamForRead,
+# así que se llama por reflexión indicando el tipo exacto.
+$comoFlujoNet = [System.IO.WindowsRuntimeStreamExtensions].GetMethod('AsStreamForRead', [Type[]]@($tipoEntrada))
 $gestor = Esperar ($tipoGestor::RequestAsync()) $tipoGestor
 
 $ultimaPista = $null
@@ -67,13 +71,15 @@ function Estado([string]$rutaPortada) {
         } else {
             try {
                 $flujo = Esperar ($propiedades.Thumbnail.OpenReadAsync()) $tipoFlujo
-                $origen = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($flujo)
+                $origen = $comoFlujoNet.Invoke($null, @($flujo))
                 $salida = [System.IO.File]::Create($rutaPortada)
                 $origen.CopyTo($salida)
                 $salida.Close(); $origen.Close()
                 $hayPortada = $true
                 $script:ultimaPista = $pista
-            } catch { }
+            } catch {
+                [Console]::Error.WriteLine("Caratula: $($_.Exception.Message)")
+            }
         }
     }
 

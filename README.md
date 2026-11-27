@@ -81,6 +81,18 @@ Todo está en `servidor\config.json` (se crea en la primera ejecución). Despué
 - **Reiniciar y apagar** piden confirmación y se ejecutan un segundo y medio después, sin esperar a que cierres programas.
 - **Registro:** con el arranque automático, los mensajes del servidor quedan en `servidor\controlpc.log`.
 
+## Actualizar
+
+1. Reemplaza los archivos de la carpeta con la versión nueva (no borres `servidor\config.json`).
+2. **Reinicia el servidor**, porque el que está corriendo sigue usando el código viejo. En PowerShell como administrador:
+
+   ```powershell
+   Stop-ScheduledTask ControlPC; Start-ScheduledTask ControlPC
+   ```
+
+   También sirve cerrar sesión en Windows y volver a entrar, o reiniciar la PC.
+3. En el iPhone, cierra la app y ábrela de nuevo.
+
 ## Desinstalar
 
 ```powershell
