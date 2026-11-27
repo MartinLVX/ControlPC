@@ -1,0 +1,26 @@
+{
+  "puerto": 8765,
+  "pin": "",
+  "apps": [
+    {
+      "id": "navegador",
+      "nombre": "Navegador",
+      "comando": "https://www.google.com"
+    },
+    {
+      "id": "bloc",
+      "nombre": "Bloc de notas",
+      "comando": "notepad.exe"
+    },
+    {
+      "id": "calculadora",
+      "nombre": "Calculadora",
+      "comando": "calc.exe"
+    },
+    {
+      "id": "explorador",
+      "nombre": "Explorador",
+      "comando": "explorer.exe"
+    }
+  ]
+}
