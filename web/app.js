@@ -3,7 +3,6 @@
 
 const $ = (id) => document.getElementById(id);
 const CLAVE_PIN = "controlpc-pin";
-const CLAVE_PESTANA = "controlpc-pestana";
 
 function leer(clave) {
   try { return localStorage.getItem(clave) || ""; } catch { return ""; }
@@ -60,7 +59,6 @@ function mostrar(vista) {
 function abrirPestana(nombre) {
   document.querySelectorAll(".pestana").forEach((p) => { p.hidden = p.id !== `pestana-${nombre}`; });
   document.querySelectorAll("[data-pestana]").forEach((b) => b.classList.toggle("activa", b.dataset.pestana === nombre));
-  guardar(CLAVE_PESTANA, nombre);
   window.scrollTo(0, 0);
   if (nombre === "multimedia") { actualizarMultimedia(); leerVolumen(); }
 }
@@ -293,6 +291,54 @@ $("volumen-barra").addEventListener("change", () => {
   enviarNivel();
 });
 
+// --- Actualizar ControlPC -----------------------------------------------------------
+
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function servidorResponde() {
+  try {
+    const control = new AbortController();
+    const espera = setTimeout(() => control.abort(), 2000);
+    const r = await fetch("/api/ping", { cache: "no-store", signal: control.signal });
+    clearTimeout(espera);
+    return r.ok;
+  } catch { return false; }
+}
+
+$("boton-actualizar").addEventListener("click", async () => {
+  const boton = $("boton-actualizar");
+  const estado = $("actualizacion-estado");
+  boton.disabled = true;
+  try {
+    estado.textContent = "Buscando versión nueva…";
+    const info = await api("/api/actualizacion");
+    if (!info.hay_nueva) {
+      estado.textContent = `Ya tienes la última versión (${info.disponible}).`;
+      return;
+    }
+    if (!(await confirmar("¿Actualizar ControlPC?", "Se descarga la versión nueva y el servidor se reinicia. Tarda unos segundos.", "Actualizar"))) {
+      estado.textContent = "Hay una versión nueva disponible.";
+      return;
+    }
+    estado.textContent = "Descargando…";
+    const r = await api("/api/actualizar", {});
+    if (!r.actualizado) {
+      estado.textContent = `Ya tienes la última versión (${r.version}).`;
+      return;
+    }
+    estado.textContent = "Reiniciando el servidor…";
+    // Se espera a que el servidor viejo se cierre y el nuevo responda; luego se recarga la app.
+    await esperar(2500);
+    for (let i = 0; i < 40 && !(await servidorResponde()); i++) await esperar(750);
+    location.reload();
+  } catch (error) {
+    if (error.estado === 401) return cerrarSesion("El PIN cambió. Vuelve a escribirlo.");
+    estado.textContent = error.estado ? error.message : "No se pudo conectar con la PC.";
+  } finally {
+    boton.disabled = false;
+  }
+});
+
 // --- Estado de la PC -------------------------------------------------------------
 
 async function comprobarEstado() {
@@ -318,7 +364,7 @@ async function entrar() {
     $("nombre-equipo").textContent = info.equipo;
     pintarApps(info.apps);
     mostrar("panel");
-    abrirPestana(leer(CLAVE_PESTANA) || "apps");
+    abrirPestana("multimedia");  // la app siempre abre en Multimedia
     comprobarEstado();
     return true;
   } catch (error) {
