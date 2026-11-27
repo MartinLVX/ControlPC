@@ -75,19 +75,27 @@
           <p id="pista-artista" class="pista-artista tenue">Reproduce algo en tu PC</p>
           <p id="pista-app" class="pista-app"></p>
         </div>
-        <div class="controles">
+        <button id="abrir-reproductor" class="boton-principal abrir-reproductor" hidden>Abrir Spotify</button>
+        <div id="controles" class="controles">
           <button class="boton-redondo grande" data-accion="anterior" aria-label="Anterior"><svg><use href="#i-anterior"/></svg></button>
           <button id="boton-play" class="boton-play" data-accion="reproducir_pausar" aria-label="Reproducir o pausar"><svg><use href="#i-play"/></svg></button>
           <button class="boton-redondo grande" data-accion="siguiente" aria-label="Siguiente"><svg><use href="#i-siguiente"/></svg></button>
         </div>
       </section>
 
-      <h2>Volumen</h2>
-      <div class="volumen">
-        <button class="mosaico" data-accion="bajar_volumen" aria-label="Bajar volumen"><svg><use href="#i-vol-bajo"/></svg></button>
-        <button class="mosaico" data-accion="silenciar" aria-label="Silenciar"><svg><use href="#i-silencio"/></svg></button>
-        <button class="mosaico" data-accion="subir_volumen" aria-label="Subir volumen"><svg><use href="#i-vol-alto"/></svg></button>
+      <div class="volumen-cabecera">
+        <h2>Volumen</h2>
+        <span id="volumen-valor" class="volumen-valor">–</span>
       </div>
+      <section class="volumen-caja">
+        <input id="volumen-barra" class="volumen-barra" type="range" min="0" max="100" step="1" value="0" aria-label="Volumen">
+        <div class="volumen">
+          <button class="mosaico" data-volumen="bajar_volumen" aria-label="Bajar volumen 1"><svg><use href="#i-vol-bajo"/></svg></button>
+          <button id="boton-silencio" class="mosaico" data-volumen="silenciar" aria-label="Silenciar"><svg><use href="#i-silencio"/></svg></button>
+          <button class="mosaico" data-volumen="subir_volumen" aria-label="Subir volumen 1"><svg><use href="#i-vol-alto"/></svg></button>
+        </div>
+        <p class="tenue nota">Mantén presionado − o + para cambiarlo más rápido.</p>
+      </section>
     </main>
 
     <!-- Equipo -->

@@ -94,6 +94,33 @@ class PruebasServidor(unittest.TestCase):
         # En modo simulado no hay carátula.
         self.assertEqual(self.pedir("/api/multimedia/portada")[0], 404)
 
+    def test_volumen_de_uno_en_uno(self):
+        estado, cuerpo = self.pedir("/api/volumen")
+        self.assertEqual(estado, 200)
+        inicial = json.loads(cuerpo)["nivel"]
+        subido = json.loads(self.pedir("/api/accion", {"accion": "subir_volumen"})[1])
+        self.assertEqual(subido["nivel"], inicial + 1)
+        bajado = json.loads(self.pedir("/api/accion", {"accion": "bajar_volumen"})[1])
+        self.assertEqual(bajado["nivel"], inicial)
+
+    def test_fijar_volumen(self):
+        estado, cuerpo = self.pedir("/api/volumen", {"nivel": 73})
+        self.assertEqual((estado, json.loads(cuerpo)["nivel"]), (200, 73))
+        self.assertEqual(json.loads(self.pedir("/api/volumen")[1])["nivel"], 73)
+        self.assertEqual(self.pedir("/api/volumen", {"nivel": 150})[0], 400)
+        self.assertEqual(self.pedir("/api/volumen", {"nivel": 50}, pin="0000")[0], 401)
+
+    def test_silencio(self):
+        antes = json.loads(self.pedir("/api/volumen")[1])["silencio"]
+        despues = json.loads(self.pedir("/api/accion", {"accion": "silenciar"})[1])["silencio"]
+        self.assertEqual(despues, not antes)
+        self.pedir("/api/accion", {"accion": "silenciar"})
+
+    def test_abrir_spotify(self):
+        self.assertEqual(self.pedir("/api/accion", {"accion": "abrir_reproductor"})[0], 200)
+        self.assertEqual(acciones.historial, ["abrir spotify:"])
+        self.assertEqual(json.loads(self.pedir("/api/multimedia")[1])["reproductor"], "Spotify")
+
     def test_controles_multimedia(self):
         for accion in ("reproducir_pausar", "siguiente", "anterior"):
             self.assertEqual(self.pedir("/api/accion", {"accion": accion})[0], 200)
@@ -115,6 +142,44 @@ class PruebasServidor(unittest.TestCase):
     def test_no_sirve_archivos_fuera_de_web(self):
         self.assertEqual(self.pedir("/../servidor/servidor.py", pin="")[0], 404)
         self.assertEqual(self.pedir("/%2e%2e/servidor/servidor.py", pin="")[0], 404)
+
+
+# Un sustituto de multimedia.ps1 que habla el mismo protocolo (una línea por orden).
+AYUDANTE_FALSO = r"""
+import json, sys, time
+print(json.dumps({"listo": True}), flush=True)
+for linea in sys.stdin:
+    orden = linea.strip()
+    if orden == "colgarse":
+        time.sleep(60)
+    elif orden == "morir":
+        sys.exit(1)
+    else:
+        print(json.dumps({"orden": orden, "abierta": True}), flush=True)
+"""
+
+
+class PruebasAyudanteMultimedia(unittest.TestCase):
+    def setUp(self):
+        class Falso(acciones._AyudanteMultimedia):
+            def comando(self):
+                return [sys.executable, "-c", AYUDANTE_FALSO]
+        self.ayudante = Falso()
+
+    def tearDown(self):
+        self.ayudante._cerrar()
+
+    def test_responde_y_reutiliza_el_proceso(self):
+        self.assertEqual(self.ayudante.pedir("estado C:\\portada.img"), {"orden": "estado C:\\portada.img", "abierta": True})
+        proceso = self.ayudante.proceso
+        self.assertEqual(self.ayudante.pedir("siguiente")["orden"], "siguiente")
+        self.assertIs(self.ayudante.proceso, proceso)
+
+    def test_se_recupera_si_el_proceso_muere(self):
+        self.ayudante.pedir("estado")
+        self.ayudante.proceso.kill()
+        self.ayudante.proceso.wait()
+        self.assertEqual(self.ayudante.pedir("anterior")["orden"], "anterior")
 
 
 class PruebasBloqueo(unittest.TestCase):

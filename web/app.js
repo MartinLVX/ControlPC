@@ -62,7 +62,7 @@ function abrirPestana(nombre) {
   document.querySelectorAll("[data-pestana]").forEach((b) => b.classList.toggle("activa", b.dataset.pestana === nombre));
   guardar(CLAVE_PESTANA, nombre);
   window.scrollTo(0, 0);
-  if (nombre === "multimedia") actualizarMultimedia();
+  if (nombre === "multimedia") { actualizarMultimedia(); leerVolumen(); }
 }
 document.querySelectorAll("[data-pestana]").forEach((boton) => {
   boton.addEventListener("click", () => abrirPestana(boton.dataset.pestana));
@@ -132,9 +132,6 @@ const TEXTOS = {
   suspender: "Suspendiendo…",
   reiniciar: "Reiniciando…",
   apagar: "Apagando…",
-  subir_volumen: "Volumen +10 %",
-  bajar_volumen: "Volumen −10 %",
-  silenciar: "Silencio",
 };
 
 function confirmar(titulo, detalle, textoSi) {
@@ -191,8 +188,17 @@ async function actualizarMultimedia() {
   try {
     const m = await api("/api/multimedia");
     const activo = m.activo && (m.titulo || m.artista);
-    $("pista-titulo").textContent = activo ? (m.titulo || "Sin título") : "Nada en reproducción";
-    $("pista-artista").textContent = activo ? (m.artista || "") : "Reproduce algo en tu PC";
+    const reproductor = m.reproductor || "";
+    $("abrir-reproductor").hidden = m.abierta !== false || !reproductor;
+    $("abrir-reproductor").textContent = `Abrir ${reproductor}`;
+    $("controles").hidden = m.abierta === false && !!reproductor;
+    if (m.abierta === false && reproductor) {
+      $("pista-titulo").textContent = `${reproductor} está cerrado`;
+      $("pista-artista").textContent = "Ábrelo para ver y controlar lo que suena";
+    } else {
+      $("pista-titulo").textContent = activo ? (m.titulo || "Sin título") : "Nada en reproducción";
+      $("pista-artista").textContent = activo ? (m.artista || "") : `Pon algo en ${reproductor || "tu PC"}`;
+    }
     $("pista-app").textContent = activo ? nombreApp(m.app) : "";
     const sonando = m.estado === "Playing";
     $("boton-play").querySelector("use").setAttribute("href", sonando ? "#i-pausa" : "#i-play");
@@ -213,6 +219,79 @@ async function actualizarMultimedia() {
     consultandoMultimedia = false;
   }
 }
+
+$("abrir-reproductor").addEventListener("click", async () => {
+  const boton = $("abrir-reproductor");
+  if (await ejecutar(boton, "/api/accion", { accion: "abrir_reproductor" }, `Abriendo ${boton.textContent.replace("Abrir ", "")}…`)) {
+    setTimeout(actualizarMultimedia, 2500);
+    setTimeout(actualizarMultimedia, 6000);
+  }
+});
+
+// --- Volumen (de 1 en 1) -----------------------------------------------------------
+
+let arrastrandoVolumen = false;
+
+function pintarVolumen(v) {
+  if (v.nivel === undefined) return;
+  $("volumen-valor").textContent = v.silencio ? "Silencio" : `${v.nivel} %`;
+  $("boton-silencio").classList.toggle("activo", !!v.silencio);
+  const barra = $("volumen-barra");
+  barra.classList.toggle("silencio", !!v.silencio);
+  if (!arrastrandoVolumen) barra.value = v.nivel;
+  barra.style.setProperty("--lleno", `${barra.value}%`);
+}
+
+async function leerVolumen() {
+  if (arrastrandoVolumen || !pestanaVisible("multimedia")) return;
+  try { pintarVolumen(await api("/api/volumen")); } catch { /* sin conexión */ }
+}
+
+async function accionVolumen(accion) {
+  try { pintarVolumen(await api("/api/accion", { accion })); }
+  catch (error) {
+    if (error.estado === 401) cerrarSesion("El PIN cambió. Vuelve a escribirlo.");
+    else avisar("No se pudo cambiar el volumen", true);
+  }
+}
+
+// Un toque cambia 1; mantener presionado repite.
+document.querySelectorAll("[data-volumen]").forEach((boton) => {
+  const accion = boton.dataset.volumen;
+  let espera, repeticion;
+  const parar = () => { clearTimeout(espera); clearInterval(repeticion); };
+  boton.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    if (navigator.vibrate) navigator.vibrate(8);
+    accionVolumen(accion);
+    if (accion === "silenciar") return;
+    espera = setTimeout(() => { repeticion = setInterval(() => accionVolumen(accion), 110); }, 400);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => boton.addEventListener(ev, parar));
+  boton.addEventListener("contextmenu", (e) => e.preventDefault());
+});
+
+// Barra: se envía mientras se arrastra (como mucho cada 120 ms) y al soltar.
+let ultimoEnvio = 0, envioPendiente;
+function enviarNivel() {
+  const nivel = Number($("volumen-barra").value);
+  ultimoEnvio = Date.now();
+  api("/api/volumen", { nivel }).then(pintarVolumen).catch(() => {});
+}
+$("volumen-barra").addEventListener("input", () => {
+  arrastrandoVolumen = true;
+  const barra = $("volumen-barra");
+  barra.style.setProperty("--lleno", `${barra.value}%`);
+  $("volumen-valor").textContent = `${barra.value} %`;
+  clearTimeout(envioPendiente);
+  const falta = 120 - (Date.now() - ultimoEnvio);
+  if (falta <= 0) enviarNivel(); else envioPendiente = setTimeout(enviarNivel, falta);
+});
+$("volumen-barra").addEventListener("change", () => {
+  clearTimeout(envioPendiente);
+  arrastrandoVolumen = false;
+  enviarNivel();
+});
 
 // --- Estado de la PC -------------------------------------------------------------
 
@@ -270,11 +349,12 @@ $("form-pin").addEventListener("submit", async (evento) => {
 $("salir").addEventListener("click", () => cerrarSesion());
 
 setInterval(() => { if (!$("vista-panel").hidden && !document.hidden) comprobarEstado(); }, 5000);
-setInterval(() => { if (!document.hidden) actualizarMultimedia(); }, 3000);
+setInterval(() => { if (!document.hidden) { actualizarMultimedia(); leerVolumen(); } }, 3000);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden || $("vista-panel").hidden) return;
   comprobarEstado();
   actualizarMultimedia();
+  leerVolumen();
 });
 
 if (pin) entrar(); else mostrar("pin");

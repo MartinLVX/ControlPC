@@ -12,8 +12,8 @@ import os
 import shutil
 import subprocess
 import sys
+import queue
 import threading
-import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -85,28 +85,87 @@ def suspender():
     _diferido(lambda: ctypes.windll.powrprof.SetSuspendState(0, 1, 0))
 
 
+# --- Volumen -------------------------------------------------------------------
+
+PASO_VOLUMEN = 1
+_volumen_simulado = {"nivel": 40, "silencio": False}
+
+
+def _volumen(operacion, *argumentos, tecla=None, **opciones):
+    """Usa el volumen exacto de Windows; si falla, pulsa la tecla de volumen como respaldo."""
+    if SIMULAR:
+        if operacion == "cambiar":
+            paso, nivel = opciones.get("paso", 0), opciones.get("nivel")
+            nuevo = _volumen_simulado["nivel"] + paso if nivel is None else nivel
+            _volumen_simulado.update(nivel=max(0, min(100, int(nuevo))), silencio=False)
+            _registrar(f"volumen {_volumen_simulado['nivel']}")
+        elif operacion == "alternar_silencio":
+            _volumen_simulado["silencio"] = not _volumen_simulado["silencio"]
+            _registrar(f"silencio {_volumen_simulado['silencio']}")
+        return dict(_volumen_simulado)
+    import volumen  # solo en Windows
+    try:
+        return getattr(volumen, operacion)(*argumentos, **opciones)
+    except OSError:
+        if tecla:
+            _tecla(tecla)
+        return {}
+
+
 def subir_volumen():
-    _tecla(VK_VOLUME_UP, 5)  # cada pulsación sube 2 %, así que sube 10 %
+    return _volumen("cambiar", paso=PASO_VOLUMEN, tecla=VK_VOLUME_UP)
 
 
 def bajar_volumen():
-    _tecla(VK_VOLUME_DOWN, 5)
+    return _volumen("cambiar", paso=-PASO_VOLUMEN, tecla=VK_VOLUME_DOWN)
 
 
 def silenciar():
-    _tecla(VK_VOLUME_MUTE)
+    return _volumen("alternar_silencio", tecla=VK_VOLUME_MUTE)
+
+
+def leer_volumen():
+    return _volumen("leer")
+
+
+def poner_volumen(nivel):
+    return _volumen("cambiar", nivel=nivel)
+
+
+# --- Controles de reproducción --------------------------------------------------
+# Se envían a la app configurada (Spotify por defecto). Si no se puede, se usan
+# las teclas multimedia, que van a la app que Windows tenga activa.
+
+def _control(orden, tecla):
+    if SIMULAR:
+        _tecla(tecla)
+        return {}
+    respuesta = _ayudante.pedir(orden)
+    if not respuesta or not respuesta.get("abierta"):
+        _tecla(tecla)
+    return {}
 
 
 def reproducir_pausar():
-    _tecla(VK_MEDIA_PLAY_PAUSE)
+    return _control("play_pausa", VK_MEDIA_PLAY_PAUSE)
 
 
 def siguiente():
-    _tecla(VK_MEDIA_NEXT)
+    return _control("siguiente", VK_MEDIA_NEXT)
 
 
 def anterior():
-    _tecla(VK_MEDIA_PREV)
+    return _control("anterior", VK_MEDIA_PREV)
+
+
+def abrir_reproductor():
+    """Abre la app de música configurada (Spotify por defecto)."""
+    destino = _config["multimedia_abrir"]
+    if SIMULAR:
+        _registrar(f"abrir {destino}")
+        return {}
+    os.startfile(destino)
+    return {}
 
 
 ACCIONES = {
@@ -120,7 +179,17 @@ ACCIONES = {
     "reproducir_pausar": reproducir_pausar,
     "siguiente": siguiente,
     "anterior": anterior,
+    "abrir_reproductor": abrir_reproductor,
 }
+
+# Ajustes que vienen de config.json (los pone servidor.py al arrancar).
+_config = {"multimedia_app": "Spotify", "multimedia_abrir": "spotify:"}
+
+
+def configurar(config):
+    for clave in _config:
+        if clave in config:
+            _config[clave] = config[clave]
 
 
 def abrir_app(app):
@@ -159,44 +228,101 @@ def _powershell(script, *argumentos, espera=15):
 
 # --- Lo que se está reproduciendo ---------------------------------------------
 
-_bloqueo_multimedia = threading.Lock()
-_ultimo_multimedia = {"cuando": 0.0, "datos": {"activo": False}}
 RUTA_PORTADA = CARPETA_CACHE / "portada.img"
+
+
+class _AyudanteMultimedia:
+    """Un PowerShell que queda abierto (ps/multimedia.ps1) y responde órdenes por línea.
+
+    Arrancar PowerShell cuesta cerca de un segundo; con el proceso abierto, cada
+    consulta o botón tarda milisegundos. Si se cierra o se cuelga, se vuelve a abrir.
+    """
+
+    def __init__(self):
+        self.proceso = None
+        self.respuestas = None
+        self.bloqueo = threading.Lock()
+
+    def comando(self):
+        return ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                "-File", str(CARPETA_PS / "multimedia.ps1"), "-App", _config["multimedia_app"] or ""]
+
+    def _arrancar(self):
+        self.proceso = subprocess.Popen(
+            self.comando(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, encoding="utf-8", bufsize=1, creationflags=SIN_VENTANA if sys.platform == "win32" else 0,
+        )
+        self.respuestas = queue.Queue()
+        proceso, respuestas = self.proceso, self.respuestas
+
+        def leer():
+            for linea in proceso.stdout:
+                respuestas.put(linea)
+        threading.Thread(target=leer, daemon=True).start()
+        self._esperar(20)  # primera línea: {"listo": true}
+
+    def _esperar(self, segundos):
+        try:
+            return json.loads(self.respuestas.get(timeout=segundos))
+        except (queue.Empty, json.JSONDecodeError):
+            return None
+
+    def _cerrar(self):
+        if self.proceso:
+            self.proceso.kill()
+        self.proceso = None
+
+    def pedir(self, orden):
+        with self.bloqueo:
+            for _ in range(2):  # si falla, un reintento con un proceso nuevo
+                try:
+                    if not self.proceso or self.proceso.poll() is not None:
+                        self._arrancar()
+                    self.proceso.stdin.write(orden + "\n")
+                    self.proceso.stdin.flush()
+                    respuesta = self._esperar(8)
+                    if respuesta is not None:
+                        return respuesta
+                except OSError:
+                    pass
+                self._cerrar()
+            return None
+
+
+_ayudante = _AyudanteMultimedia()
 
 # Respuesta de ejemplo para el modo simulado.
 MULTIMEDIA_SIMULADA = {
     "activo": True,
+    "abierta": True,
     "titulo": "Canción de prueba",
     "artista": "Artista de prueba",
     "album": "Álbum de prueba",
     "app": "Spotify.exe",
     "estado": "Playing",
+    "posicion": 72,
+    "duracion": 215,
     "portada": None,
 }
 
 
 def multimedia():
-    """Título, artista, app y estado de lo que suena en la PC.
+    """Título, artista, estado, posición y carátula de lo que suena en la app configurada.
 
-    El resultado se guarda 2 segundos para no lanzar PowerShell en cada consulta.
     "portada" es un identificador que cambia cuando cambia la carátula (o None).
+    "abierta" es False si la app (Spotify) no está abierta.
     """
     if SIMULAR:
-        return dict(MULTIMEDIA_SIMULADA)
-    with _bloqueo_multimedia:
-        if time.monotonic() - _ultimo_multimedia["cuando"] < 2:
-            return dict(_ultimo_multimedia["datos"])
+        datos = dict(MULTIMEDIA_SIMULADA)
+    else:
         CARPETA_CACHE.mkdir(exist_ok=True)
-        try:
-            datos = json.loads(_powershell("multimedia.ps1", "-Portada", str(RUTA_PORTADA)) or "{}")
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError) as error:
-            datos = {"activo": False, "error": str(error)}
+        datos = _ayudante.pedir(f"estado {RUTA_PORTADA}") or {"activo": False, "abierta": False}
         if datos.get("portada") and RUTA_PORTADA.exists():
             datos["portada"] = hashlib.sha1(RUTA_PORTADA.read_bytes()).hexdigest()[:12]
         else:
             datos["portada"] = None
-        _ultimo_multimedia.update(cuando=time.monotonic(), datos=datos)
-        return dict(datos)
+    datos["reproductor"] = _config["multimedia_app"] or ""
+    return datos
 
 
 def portada():

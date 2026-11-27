@@ -72,6 +72,7 @@ class Fallos:
 
 def crear_manejador(config):
     fallos = Fallos()
+    acciones.configurar(config)
     apps_por_id = {app["id"]: app for app in config["apps"]}
 
     class Manejador(BaseHTTPRequestHandler):
@@ -130,6 +131,10 @@ def crear_manejador(config):
                 if not self._autorizado():
                     return
                 return self._json(HTTPStatus.OK, acciones.multimedia())
+            if ruta == "/api/volumen":
+                if not self._autorizado():
+                    return
+                return self._json(HTTPStatus.OK, acciones.leer_volumen())
             if ruta == "/api/multimedia/portada":
                 if not self._autorizado():
                     return
@@ -159,7 +164,7 @@ def crear_manejador(config):
 
         def do_POST(self):
             ruta = self.path.split("?", 1)[0]
-            if ruta not in ("/api/accion", "/api/abrir"):
+            if ruta not in ("/api/accion", "/api/abrir", "/api/volumen"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "No existe"})
             if not self._autorizado():
                 return
@@ -173,10 +178,16 @@ def crear_manejador(config):
                 if funcion is None:
                     return self._json(HTTPStatus.BAD_REQUEST, {"error": "Acción desconocida"})
                 try:
-                    funcion()
+                    extra = funcion() or {}
                 except Exception as error:  # noqa: BLE001 - se informa al celular
                     return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(error)})
-                return self._json(HTTPStatus.OK, {"ok": True, "accion": nombre})
+                return self._json(HTTPStatus.OK, {"ok": True, "accion": nombre, **extra})
+
+            if ruta == "/api/volumen":
+                nivel = datos.get("nivel")
+                if not isinstance(nivel, (int, float)) or not 0 <= nivel <= 100:
+                    return self._json(HTTPStatus.BAD_REQUEST, {"error": "Nivel inválido"})
+                return self._json(HTTPStatus.OK, {"ok": True, **acciones.poner_volumen(nivel)})
 
             app = apps_por_id.get(datos.get("id"))
             if app is None:
