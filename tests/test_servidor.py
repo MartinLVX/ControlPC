@@ -25,10 +25,15 @@ class PruebasServidor(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
+        cls.png = Path(cls.tmp.name) / "icono.png"
+        cls.png.write_bytes(b"\x89PNG\r\n\x1a\nprueba")
         ruta = Path(cls.tmp.name) / "config.json"
         ruta.write_text(json.dumps({
             "pin": "1234",
-            "apps": [{"id": "bloc", "nombre": "Bloc de notas", "comando": "notepad.exe"}],
+            "apps": [
+                {"id": "bloc", "nombre": "Bloc de notas", "comando": "notepad.exe"},
+                {"id": "propia", "nombre": "Con icono", "comando": "x.exe", "icono": str(cls.png)},
+            ],
         }), encoding="utf-8")
         cls.config = servidor.cargar_config(ruta)
         cls.http = ThreadingHTTPServer(("127.0.0.1", 0), servidor.crear_manejador(cls.config))
@@ -59,7 +64,7 @@ class PruebasServidor(unittest.TestCase):
         self.assertEqual(self.pedir("/api/info", pin="0000")[0], 401)
         estado, cuerpo = self.pedir("/api/info")
         self.assertEqual(estado, 200)
-        self.assertEqual(json.loads(cuerpo)["apps"], [{"id": "bloc", "nombre": "Bloc de notas"}])
+        self.assertEqual(json.loads(cuerpo)["apps"][0], {"id": "bloc", "nombre": "Bloc de notas"})
 
     def test_acciones(self):
         for nombre in acciones.ACCIONES:
@@ -78,6 +83,29 @@ class PruebasServidor(unittest.TestCase):
     def test_accion_con_pin_malo_no_se_ejecuta(self):
         self.assertEqual(self.pedir("/api/accion", {"accion": "apagar"}, pin="9999")[0], 401)
         self.assertEqual(acciones.historial, [])
+
+    def test_multimedia(self):
+        self.assertEqual(self.pedir("/api/multimedia", pin="0000")[0], 401)
+        estado, cuerpo = self.pedir("/api/multimedia")
+        self.assertEqual(estado, 200)
+        datos = json.loads(cuerpo)
+        self.assertTrue(datos["activo"])
+        self.assertEqual(datos["titulo"], "Canción de prueba")
+        # En modo simulado no hay carátula.
+        self.assertEqual(self.pedir("/api/multimedia/portada")[0], 404)
+
+    def test_controles_multimedia(self):
+        for accion in ("reproducir_pausar", "siguiente", "anterior"):
+            self.assertEqual(self.pedir("/api/accion", {"accion": accion})[0], 200)
+        self.assertEqual(acciones.historial, ["tecla 0xB3 x1", "tecla 0xB0 x1", "tecla 0xB1 x1"])
+
+    def test_iconos(self):
+        self.assertEqual(self.pedir("/api/icono/propia", pin="0000")[0], 401)
+        estado, cuerpo = self.pedir("/api/icono/propia")
+        self.assertEqual((estado, cuerpo), (200, self.png.read_bytes()))
+        # Sin Windows no se puede sacar el icono de un .exe: el celular muestra la inicial.
+        self.assertEqual(self.pedir("/api/icono/bloc")[0], 404)
+        self.assertEqual(self.pedir("/api/icono/no-existe")[0], 404)
 
     def test_sirve_la_pwa(self):
         estado, cuerpo = self.pedir("/", pin="")
