@@ -14,12 +14,14 @@ import secrets
 import shutil
 import socket
 import sys
+import threading
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import acciones
+import actualizar
 
 CARPETA = Path(__file__).resolve().parent
 CARPETA_WEB = (CARPETA.parent / "web").resolve()
@@ -73,6 +75,8 @@ class Fallos:
 def crear_manejador(config):
     fallos = Fallos()
     acciones.configurar(config)
+    repositorio = {"repositorio": config.get("repositorio", actualizar.REPOSITORIO),
+                   "rama": config.get("rama", actualizar.RAMA)}
     apps_por_id = {app["id"]: app for app in config["apps"]}
 
     class Manejador(BaseHTTPRequestHandler):
@@ -135,6 +139,15 @@ def crear_manejador(config):
                 if not self._autorizado():
                     return
                 return self._json(HTTPStatus.OK, acciones.leer_volumen())
+            if ruta == "/api/actualizacion":
+                if not self._autorizado():
+                    return
+                if acciones.SIMULAR:  # en pruebas no se consulta GitHub
+                    return self._json(HTTPStatus.OK, {"instalada": "abc1234", "disponible": "def5678", "hay_nueva": True})
+                try:
+                    return self._json(HTTPStatus.OK, actualizar.revisar(**repositorio))
+                except Exception as error:  # noqa: BLE001
+                    return self._json(HTTPStatus.BAD_GATEWAY, {"error": f"No se pudo consultar GitHub: {error}"})
             if ruta == "/api/multimedia/portada":
                 if not self._autorizado():
                     return
@@ -164,7 +177,7 @@ def crear_manejador(config):
 
         def do_POST(self):
             ruta = self.path.split("?", 1)[0]
-            if ruta not in ("/api/accion", "/api/abrir", "/api/volumen"):
+            if ruta not in ("/api/accion", "/api/abrir", "/api/volumen", "/api/actualizar"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "No existe"})
             if not self._autorizado():
                 return
@@ -182,6 +195,19 @@ def crear_manejador(config):
                 except Exception as error:  # noqa: BLE001 - se informa al celular
                     return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(error)})
                 return self._json(HTTPStatus.OK, {"ok": True, "accion": nombre, **extra})
+
+            if ruta == "/api/actualizar":
+                if acciones.SIMULAR:  # en pruebas no se descarga ni se sobrescribe nada
+                    self._json(HTTPStatus.OK, {"ok": True, "actualizado": True, "version": "def5678", "archivos": 0})
+                    return reiniciar_despues(self.server)
+                try:
+                    resultado = actualizar.actualizar(**repositorio)
+                except Exception as error:  # noqa: BLE001
+                    return self._json(HTTPStatus.BAD_GATEWAY, {"error": f"No se pudo actualizar: {error}"})
+                self._json(HTTPStatus.OK, {"ok": True, **resultado})
+                if resultado["actualizado"]:
+                    reiniciar_despues(self.server)
+                return
 
             if ruta == "/api/volumen":
                 nivel = datos.get("nivel")
@@ -218,6 +244,32 @@ def crear_manejador(config):
     return Manejador
 
 
+def reiniciar_despues(servidor, segundos=1.0):
+    """Cierra este servidor y arranca uno nuevo con el código recién descargado."""
+    def reiniciar():
+        if acciones.SIMULAR:
+            print("[simulado] reiniciar servidor")
+            return
+        print("Reiniciando con la versión nueva…", flush=True)
+        servidor.server_close()  # libera el puerto para el servidor nuevo
+        actualizar.lanzar_servidor()
+        os._exit(0)
+    temporizador = threading.Timer(segundos, reiniciar)
+    temporizador.daemon = True
+    temporizador.start()
+
+
+def escuchar(puerto, manejador, intentos=40):
+    """Abre el puerto. Si está ocupado (p. ej. el servidor anterior aún se cierra), reintenta."""
+    for intento in range(intentos):
+        try:
+            return ThreadingHTTPServer(("0.0.0.0", puerto), manejador)
+        except OSError:
+            if intento == intentos - 1:
+                raise
+            time.sleep(0.5)
+
+
 def ip_local():
     """La IP de la PC en la red local (la que hay que abrir en el iPhone)."""
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -234,7 +286,7 @@ def main():
         registro = open(CARPETA / "controlpc.log", "a", encoding="utf-8", buffering=1)
         sys.stdout = sys.stderr = registro
     config = cargar_config()
-    servidor = ThreadingHTTPServer(("0.0.0.0", config["puerto"]), crear_manejador(config))
+    servidor = escuchar(config["puerto"], crear_manejador(config))
     print("ControlPC en marcha.")
     print(f"  Abre en el iPhone:  http://{ip_local()}:{config['puerto']}")
     print(f"  PIN:                {config['pin']}   (cámbialo en {RUTA_CONFIG})")

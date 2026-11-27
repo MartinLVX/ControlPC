@@ -1,10 +1,10 @@
 # ControlPC
 
-Controla tu PC con Windows desde el iPhone, en tu misma red WiFi. La app tiene tres pestañas:
+Controla tu PC con Windows desde el iPhone, en tu misma red WiFi. La app abre en Multimedia y tiene tres pestañas:
 
 - **Aplicaciones:** abre los programas de tu lista, cada uno con su icono.
 - **Multimedia:** enlazada a Spotify de escritorio. Muestra la canción (título, artista y carátula), con anterior, reproducir/pausar y siguiente que van directo a Spotify aunque esté minimizado. Si Spotify está cerrado, hay un botón para abrirlo. El volumen se mueve de 1 en 1 (o con la barra) y muestra el nivel exacto.
-- **Equipo:** bloquear, suspender, reiniciar y apagar.
+- **Equipo:** bloquear, suspender, reiniciar, apagar y actualizar ControlPC.
 
 Son dos partes:
 
@@ -83,15 +83,11 @@ Todo está en `servidor\config.json` (se crea en la primera ejecución). Despué
 
 ## Actualizar
 
-1. Reemplaza los archivos de la carpeta con la versión nueva (no borres `servidor\config.json`).
-2. **Reinicia el servidor**, porque el que está corriendo sigue usando el código viejo. En PowerShell como administrador:
+**Desde el iPhone:** pestaña **Equipo → Actualizar**. La PC descarga la última versión de GitHub, reinicia el servidor y la app se recarga sola.
 
-   ```powershell
-   Stop-ScheduledTask ControlPC; Start-ScheduledTask ControlPC
-   ```
+**Desde la PC:** doble clic en `scripts\actualizar.bat`. Hace lo mismo y además sirve para reiniciar el servidor si algo se quedó trabado.
 
-   También sirve cerrar sesión en Windows y volver a entrar, o reiniciar la PC.
-3. En el iPhone, cierra la app y ábrela de nuevo.
+En los dos casos tu `servidor\config.json` (PIN y apps) y la caché de iconos no se tocan. La versión instalada queda anotada en `servidor\version.txt`.
 
 ## Desinstalar
 

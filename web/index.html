@@ -62,12 +62,12 @@
     </header>
 
     <!-- Aplicaciones -->
-    <main id="pestana-apps" class="pestana" data-titulo="Aplicaciones">
+    <main id="pestana-apps" class="pestana" data-titulo="Aplicaciones" hidden>
       <div id="apps" class="rejilla-apps"></div>
     </main>
 
     <!-- Multimedia -->
-    <main id="pestana-multimedia" class="pestana" data-titulo="Multimedia" hidden>
+    <main id="pestana-multimedia" class="pestana" data-titulo="Multimedia">
       <section class="reproduciendo">
         <div class="caratula"><img id="portada" alt="" hidden><svg id="portada-vacia"><use href="#i-musica"/></svg></div>
         <div class="pista">
@@ -106,11 +106,20 @@
         <button class="mosaico" data-accion="reiniciar" data-confirmar="¿Reiniciar la PC?" data-detalle="Se cerrará todo lo que tengas abierto."><svg><use href="#i-reiniciar"/></svg><span>Reiniciar</span></button>
         <button class="mosaico" data-accion="apagar" data-confirmar="¿Apagar la PC?" data-detalle="Se cerrará todo lo que tengas abierto."><svg><use href="#i-apagar"/></svg><span>Apagar</span></button>
       </div>
+
+      <h2>ControlPC</h2>
+      <section class="actualizacion">
+        <div>
+          <p class="actualizacion-titulo">Actualizar la app</p>
+          <p id="actualizacion-estado" class="tenue">Descarga la última versión y reinicia el servidor.</p>
+        </div>
+        <button id="boton-actualizar" class="boton-secundario">Actualizar</button>
+      </section>
     </main>
 
     <nav class="barra-pestanas" aria-label="Secciones">
-      <button data-pestana="apps" class="activa"><svg><use href="#i-apps"/></svg><span>Aplicaciones</span></button>
-      <button data-pestana="multimedia"><svg><use href="#i-musica"/></svg><span>Multimedia</span></button>
+      <button data-pestana="apps"><svg><use href="#i-apps"/></svg><span>Aplicaciones</span></button>
+      <button data-pestana="multimedia" class="activa"><svg><use href="#i-musica"/></svg><span>Multimedia</span></button>
       <button data-pestana="equipo"><svg><use href="#i-equipo"/></svg><span>Equipo</span></button>
     </nav>
   </div>

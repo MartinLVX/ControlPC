@@ -17,6 +17,7 @@ os.environ["CONTROLPC_SIMULAR"] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "servidor"))
 
 import acciones  # noqa: E402
+import actualizar  # noqa: E402
 import servidor  # noqa: E402
 from http.server import ThreadingHTTPServer  # noqa: E402
 
@@ -134,6 +135,14 @@ class PruebasServidor(unittest.TestCase):
         self.assertEqual(self.pedir("/api/icono/bloc")[0], 404)
         self.assertEqual(self.pedir("/api/icono/no-existe")[0], 404)
 
+    def test_actualizar_simulado(self):
+        self.assertEqual(self.pedir("/api/actualizacion", pin="0000")[0], 401)
+        self.assertTrue(json.loads(self.pedir("/api/actualizacion")[1])["hay_nueva"])
+        self.assertEqual(self.pedir("/api/actualizar", {}, pin="0000")[0], 401)
+        estado, cuerpo = self.pedir("/api/actualizar", {})
+        self.assertEqual(estado, 200)
+        self.assertTrue(json.loads(cuerpo)["actualizado"])
+
     def test_sirve_la_pwa(self):
         estado, cuerpo = self.pedir("/", pin="")
         self.assertEqual(estado, 200)
@@ -186,6 +195,42 @@ class PruebasAyudanteMultimedia(unittest.TestCase):
         self.ayudante.proceso.kill()
         self.ayudante.proceso.wait()
         self.assertEqual(self.ayudante.pedir("anterior")["orden"], "anterior")
+
+
+class PruebasActualizar(unittest.TestCase):
+    def zip_de_github(self, archivos):
+        import io
+        import zipfile
+        datos = io.BytesIO()
+        with zipfile.ZipFile(datos, "w") as z:
+            for ruta, contenido in archivos.items():
+                z.writestr("ControlPC-abc123/" + ruta, contenido)
+        return datos.getvalue()
+
+    def test_copia_archivos_y_respeta_los_datos_del_usuario(self):
+        with tempfile.TemporaryDirectory() as raiz:
+            raiz = Path(raiz)
+            (raiz / "servidor" / "cache").mkdir(parents=True)
+            (raiz / "servidor" / "config.json").write_text("MI CONFIG")
+            (raiz / "servidor" / "cache" / "icono.png").write_text("MI ICONO")
+            (raiz / "web").mkdir()
+            (raiz / "web" / "app.js").write_text("viejo")
+            contenido = self.zip_de_github({
+                "web/app.js": "nuevo",
+                "servidor/nuevo.py": "x = 1",
+                "servidor/config.json": "CONFIG DEL REPO",
+                "servidor/cache/icono.png": "otro",
+                "servidor/__pycache__/a.pyc": "basura",
+                "../fuera.txt": "no",
+            })
+            copiados = actualizar.instalar_zip(contenido, raiz)
+            self.assertEqual(copiados, 2)
+            self.assertEqual((raiz / "web" / "app.js").read_text(), "nuevo")
+            self.assertEqual((raiz / "servidor" / "nuevo.py").read_text(), "x = 1")
+            self.assertEqual((raiz / "servidor" / "config.json").read_text(), "MI CONFIG")
+            self.assertEqual((raiz / "servidor" / "cache" / "icono.png").read_text(), "MI ICONO")
+            self.assertFalse((raiz / "servidor" / "__pycache__").exists())
+            self.assertFalse((raiz.parent / "fuera.txt").exists())
 
 
 class PruebasBloqueo(unittest.TestCase):
