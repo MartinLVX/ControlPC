@@ -1,6 +1,10 @@
 # ControlPC
 
-Controla tu PC con Windows desde el iPhone, en tu misma red WiFi: abrir aplicaciones, bloquear, suspender, reiniciar, apagar y cambiar el volumen.
+Controla tu PC con Windows desde el iPhone, en tu misma red WiFi. La app tiene tres pestañas:
+
+- **Aplicaciones:** abre los programas de tu lista, cada uno con su icono.
+- **Multimedia:** muestra lo que suena en la PC (título, artista, carátula y app), con anterior, reproducir/pausar, siguiente y volumen.
+- **Equipo:** bloquear, suspender, reiniciar y apagar.
 
 Son dos partes:
 
@@ -54,6 +58,8 @@ Todo está en `servidor\config.json` (se crea en la primera ejecución). Despué
 
 - **`comando`** puede ser la ruta a un `.exe`, un acceso directo `.lnk`, un documento o una URL. Acepta variables como `%APPDATA%` o `%USERPROFILE%`. Recuerda escribir las barras invertidas dobles (`\\`).
 - **`argumentos`** es opcional, para pasarle cosas al programa.
+- **`icono`** es opcional. Sin él, se usa el icono que Windows muestra para ese programa (o el favicon, si es una página web). Puedes poner la ruta a una imagen `.png`/`.jpg` propia, o a un `.exe`/`.ico` del que sacar el icono. Útil cuando el comando es algo como `code`, que no apunta directo al programa.
+- Los iconos se guardan en `servidor\cache\`. Si cambias uno y no se actualiza, borra esa carpeta.
 - Para encontrar la ruta de un programa: clic derecho en su acceso directo → **Propiedades** → campo **Destino**.
 - Solo se pueden abrir las apps de esta lista. Desde el celular no se puede ejecutar ningún otro comando.
 
@@ -67,6 +73,7 @@ Todo está en `servidor\config.json` (se crea en la primera ejecución). Despué
 
 - **Suspender:** si Windows tiene la hibernación activada, el botón hiberna en lugar de suspender. Para que suspenda, ejecuta `powercfg /hibernate off` en una terminal de administrador.
 - **Volumen:** cada toque sube o baja un 10 %.
+- **Multimedia:** funciona con las apps que aparecen en el control de medios de Windows (Spotify, el navegador con YouTube, el Reproductor multimedia, etc.). Requiere Windows 10 u 11.
 - **Reiniciar y apagar** piden confirmación y se ejecutan un segundo y medio después, sin esperar a que cierres programas.
 - **Registro:** con el arranque automático, los mensajes del servidor quedan en `servidor\controlpc.log`.
 

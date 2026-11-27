@@ -1,3 +1,4 @@
 servidor/config.json
 servidor/controlpc.log
 __pycache__/
+servidor/cache/

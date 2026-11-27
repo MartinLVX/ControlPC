@@ -126,7 +126,36 @@ def crear_manejador(config):
                     "apps": [{"id": a["id"], "nombre": a["nombre"]} for a in config["apps"]],
                     "acciones": list(acciones.ACCIONES),
                 })
+            if ruta == "/api/multimedia":
+                if not self._autorizado():
+                    return
+                return self._json(HTTPStatus.OK, acciones.multimedia())
+            if ruta == "/api/multimedia/portada":
+                if not self._autorizado():
+                    return
+                return self._imagen(acciones.portada())
+            if ruta.startswith("/api/icono/"):
+                if not self._autorizado():
+                    return
+                app = apps_por_id.get(ruta.removeprefix("/api/icono/"))
+                return self._imagen(acciones.icono(app) if app else None, cache=True)
             return self._archivo(ruta)
+
+        def _imagen(self, datos, cache=False):
+            if not datos:
+                return self._json(HTTPStatus.NOT_FOUND, {"error": "Sin imagen"})
+            if datos.startswith(b"\x89PNG"):
+                tipo = "image/png"
+            elif datos.startswith(b"\xff\xd8"):
+                tipo = "image/jpeg"
+            else:
+                tipo = "application/octet-stream"
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", tipo)
+            self.send_header("Content-Length", str(len(datos)))
+            self.send_header("Cache-Control", "private, max-age=86400" if cache else "no-store")
+            self.end_headers()
+            self.wfile.write(datos)
 
         def do_POST(self):
             ruta = self.path.split("?", 1)[0]
