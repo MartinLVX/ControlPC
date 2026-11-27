@@ -120,11 +120,16 @@ SPECS_SIMULADAS = {
 }
 
 
-def componentes():
-    """Lista de componentes. Se pide una sola vez (no cambian) y se guarda."""
+def componentes(bloquear=False):
+    """Lista de componentes. Se pide una sola vez (no cambian) y se guarda.
+
+    Sin `bloquear`, devuelve None mientras se cargan (tarda unos segundos la primera vez).
+    """
     global _specs
     if SIMULAR:
         return SPECS_SIMULADAS
+    if not bloquear:
+        return _specs
     with _bloqueo_specs:
         if _specs is None:
             respuesta = _ayudante.pedir("specs", espera=40)
@@ -140,7 +145,7 @@ def _simulado():
     return {
         "cpu": round(25 + 15 * abs((t % 20) - 10) / 10),
         "memoria": {"total": 32 * 1024**3, "usada": 13 * 1024**3, "porcentaje": 41},
-        "gpu": {"uso": 12, "memoria_usada": 2 * 1024**3},
+        "gpu": {"uso": 12, "memoria_usada": 2 * 1024**3, "memoria_tipo": "dedicada"},
         "discos": [
             {"unidad": "C:", "nombre": "Windows", "total": 1000 * 1000**3, "usado": 612 * 1000**3, "porcentaje": 61},
             {"unidad": "D:", "nombre": "Juegos", "total": 2000 * 1000**3, "usado": 1430 * 1000**3, "porcentaje": 72},
@@ -149,20 +154,54 @@ def _simulado():
     }
 
 
+# El ayudante de PowerShell tarda de 0,5 a 1 s (y más la primera vez), así que se consulta
+# en segundo plano mientras alguien mira la pestaña, y la petición del celular responde
+# al instante con el último dato.
+_ultimo_ps = {"cpu": None, "gpu": None}
+_ultima_peticion = 0.0
+_hilo_fondo = None
+_bloqueo_fondo = threading.Lock()
+
+
+def _bucle_fondo():
+    while time.monotonic() - _ultima_peticion < 15:
+        if _specs is None:
+            componentes(bloquear=True)
+        respuesta = _ayudante.pedir("uso", espera=30)
+        if respuesta and "error" not in respuesta:
+            _ultimo_ps.update(cpu=respuesta.get("cpu"), gpu=respuesta.get("gpu"))
+        time.sleep(1.5)
+
+
+def _despertar_fondo():
+    global _hilo_fondo, _ultima_peticion
+    with _bloqueo_fondo:
+        _ultima_peticion = time.monotonic()
+        if _hilo_fondo is None or not _hilo_fondo.is_alive():
+            _hilo_fondo = threading.Thread(target=_bucle_fondo, daemon=True)
+            _hilo_fondo.start()
+
+
 def uso():
     """Uso actual. Cada parte falla por separado: si una no se puede leer, viene en None."""
     if SIMULAR:
         return _simulado()
+    _despertar_fondo()
     datos = {}
-    for clave, funcion in (("cpu", uso_cpu), ("memoria", uso_memoria), ("discos", uso_discos),
-                           ("encendida", encendida_segundos)):
+    for clave, funcion in (("memoria", uso_memoria), ("discos", uso_discos), ("encendida", encendida_segundos)):
         try:
             datos[clave] = funcion()
         except Exception as error:  # noqa: BLE001
             print(f"[sistema] {clave}: {error}", file=sys.stderr, flush=True)
             datos[clave] = None
-    respuesta = _ayudante.pedir("gpu")
-    datos["gpu"] = respuesta if respuesta and "error" not in respuesta else None
+    # Procesador: la cifra del Administrador de tareas si ya llegó; si no, el tiempo ocupado.
+    datos["cpu"] = _ultimo_ps["cpu"]
+    if datos["cpu"] is None:
+        try:
+            datos["cpu"] = uso_cpu()
+        except Exception:  # noqa: BLE001
+            datos["cpu"] = None
+    datos["gpu"] = _ultimo_ps["gpu"]
     return datos
 
 

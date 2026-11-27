@@ -2,7 +2,7 @@
 #
 # Órdenes:
 #   specs   componentes de la PC (procesador, gráfica, memoria, discos, placa, Windows)
-#   gpu     uso actual de la gráfica (%) y memoria de video usada
+#   uso     uso actual del procesador (como el Administrador de tareas) y de la gráfica
 #
 # Se usan clases CIM/WMI, que tienen el mismo nombre en Windows en español o en inglés
 # (los nombres de los contadores de rendimiento clásicos cambian según el idioma).
@@ -42,7 +42,7 @@ function Specs {
     $placa = Get-CimInstance Win32_BaseBoard
     $equipo = Get-CimInstance Win32_ComputerSystem
 
-    $graficas = @(Get-CimInstance Win32_VideoController | Where-Object { $_.Name -notlike "*Basic Display*" } | ForEach-Object {
+    $graficas = @(Get-CimInstance Win32_VideoController | Where-Object { $_.Name -notmatch "Basic Display|Basic Render|Idd|Virtual|Remote|Mirror|Parsec|Meta" } | ForEach-Object {
         $memoria = Memoria-Grafica $_.Name
         if (-not $memoria -and $_.AdapterRAM -gt 0) { $memoria = [int64]$_.AdapterRAM }
         @{ nombre = Texto $_.Name; memoria = $memoria; driver = Texto $_.DriverVersion }
@@ -79,21 +79,51 @@ function Specs {
     }
 }
 
-function Gpu {
-    $uso = $null
-    $memoria = $null
+$script:cpuAnterior = $null
+
+function Cpu-Utilidad {
+    # "% Processor Utility" es lo que muestra el Administrador de tareas: tiene en cuenta
+    # la frecuencia real (turbo), así que marca más que el simple tiempo ocupado.
+    $m = Get-CimInstance Win32_PerfRawData_Counters_ProcessorInformation -Filter "Name='_Total'"
+    $actual = @{ valor = [double]$m.PercentProcessorUtility; base = [double]$m.PercentProcessorUtility_Base }
+    $anterior = $script:cpuAnterior
+    $script:cpuAnterior = $actual
+    if (-not $anterior) { return $null }
+    $delta = $actual.base - $anterior.base
+    if ($delta -le 0) { return $null }
+    return [math]::Max(0, [math]::Min(100, [int][math]::Round(100 * ($actual.valor - $anterior.valor) / $delta)))
+}
+
+function Uso {
+    $cpu = $null
     try {
-        # Igual que el Administrador de tareas: el motor 3D más ocupado de cada proceso, sumado.
+        $cpu = Cpu-Utilidad
+        if ($null -eq $cpu) { Start-Sleep -Milliseconds 400; $cpu = Cpu-Utilidad }
+    } catch { }
+
+    $gpu = $null
+    try {
+        # Igual que el Administrador de tareas: la suma de los motores 3D.
         $motores = Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine |
             Where-Object { $_.Name -like "*engtype_3D*" }
         $suma = ($motores | Measure-Object -Property UtilizationPercentage -Sum).Sum
-        if ($null -ne $suma) { $uso = [math]::Min(100, [int]$suma) }
+        if ($null -ne $suma) { $gpu = [math]::Min(100, [int]$suma) }
     } catch { }
+
+    $memoria = $null
+    $tipo = $null
     try {
-        $adaptadores = Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory
-        $memoria = [int64](($adaptadores | Measure-Object -Property DedicatedUsage -Maximum).Maximum)
+        $adaptadores = @(Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory)
+        $dedicada = [int64](($adaptadores | Measure-Object -Property DedicatedUsage -Maximum).Maximum)
+        if ($dedicada -gt 0) {
+            $memoria = $dedicada; $tipo = "dedicada"
+        } else {
+            # Gráficas integradas (Intel Iris, AMD Radeon integrada): usan memoria compartida.
+            $memoria = [int64](($adaptadores | Measure-Object -Property SharedUsage -Maximum).Maximum); $tipo = "compartida"
+        }
     } catch { }
-    return @{ uso = $uso; memoria_usada = $memoria }
+
+    return @{ cpu = $cpu; gpu = @{ uso = $gpu; memoria_usada = $memoria; memoria_tipo = $tipo } }
 }
 
 Responder @{ listo = $true }
@@ -102,7 +132,7 @@ while ($null -ne ($linea = [Console]::In.ReadLine())) {
     try {
         switch ($linea.Trim()) {
             "specs" { Responder (Specs) }
-            "gpu"   { Responder (Gpu) }
+            "uso"   { Responder (Uso) }
             default { Responder @{ error = "Orden desconocida" } }
         }
     } catch {
