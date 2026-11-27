@@ -32,6 +32,7 @@
       <symbol id="i-vol-bajo" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></symbol>
       <symbol id="i-vol-alto" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></symbol>
       <symbol id="i-silencio" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="m22 9-6 6M16 9l6 6"/></symbol>
+      <symbol id="i-sistema" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
       <symbol id="i-salir" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></symbol>
     </defs>
   </svg>
@@ -98,6 +99,26 @@
       </section>
     </main>
 
+    <!-- Sistema -->
+    <main id="pestana-sistema" class="pestana" data-titulo="Sistema" hidden>
+      <div class="sistema-cabecera">
+        <h2>Uso ahora</h2>
+        <span id="sistema-encendida" class="tenue"></span>
+      </div>
+      <section class="medidores">
+        <div class="medidor" id="medidor-cpu"><svg viewBox="0 0 100 100"><circle class="pista-anillo" cx="50" cy="50" r="42"/><circle class="anillo" cx="50" cy="50" r="42"/></svg><span class="medidor-valor">–</span><span class="medidor-nombre">Procesador</span></div>
+        <div class="medidor" id="medidor-memoria"><svg viewBox="0 0 100 100"><circle class="pista-anillo" cx="50" cy="50" r="42"/><circle class="anillo" cx="50" cy="50" r="42"/></svg><span class="medidor-valor">–</span><span class="medidor-nombre">Memoria</span></div>
+        <div class="medidor" id="medidor-gpu"><svg viewBox="0 0 100 100"><circle class="pista-anillo" cx="50" cy="50" r="42"/><circle class="anillo" cx="50" cy="50" r="42"/></svg><span class="medidor-valor">–</span><span class="medidor-nombre">Gráfica</span></div>
+      </section>
+      <p id="detalle-memoria" class="tenue detalle-uso"></p>
+
+      <h2>Discos</h2>
+      <section id="sistema-discos" class="lista-tarjeta"></section>
+
+      <h2>Componentes</h2>
+      <section id="sistema-componentes" class="lista-tarjeta"><p class="tenue fila-lista">Cargando…</p></section>
+    </main>
+
     <!-- Equipo -->
     <main id="pestana-equipo" class="pestana" data-titulo="Equipo" hidden>
       <div class="rejilla-equipo">
@@ -120,6 +141,7 @@
     <nav class="barra-pestanas" aria-label="Secciones">
       <button data-pestana="apps"><svg><use href="#i-apps"/></svg><span>Aplicaciones</span></button>
       <button data-pestana="multimedia" class="activa"><svg><use href="#i-musica"/></svg><span>Multimedia</span></button>
+      <button data-pestana="sistema"><svg><use href="#i-sistema"/></svg><span>Sistema</span></button>
       <button data-pestana="equipo"><svg><use href="#i-equipo"/></svg><span>Equipo</span></button>
     </nav>
   </div>

@@ -234,21 +234,23 @@ def _powershell(script, *argumentos, espera=15):
 RUTA_PORTADA = CARPETA_CACHE / "portada.img"
 
 
-class _AyudanteMultimedia:
-    """Un PowerShell que queda abierto (ps/multimedia.ps1) y responde órdenes por línea.
+class AyudantePS:
+    """Un PowerShell que queda abierto (un script de ps/) y responde órdenes por línea.
 
     Arrancar PowerShell cuesta cerca de un segundo; con el proceso abierto, cada
     consulta o botón tarda milisegundos. Si se cierra o se cuelga, se vuelve a abrir.
     """
 
-    def __init__(self):
+    def __init__(self, script="multimedia.ps1", argumentos=lambda: ["-App", _config["multimedia_app"] or ""]):
+        self.script = script
+        self.argumentos = argumentos
         self.proceso = None
         self.respuestas = None
         self.bloqueo = threading.Lock()
 
     def comando(self):
         return ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                "-File", str(CARPETA_PS / "multimedia.ps1"), "-App", _config["multimedia_app"] or ""]
+                "-File", str(CARPETA_PS / self.script), *self.argumentos()]
 
     def _arrancar(self):
         self.proceso = subprocess.Popen(
@@ -265,12 +267,12 @@ class _AyudanteMultimedia:
         def errores():  # lo que PowerShell escriba como error va al registro del servidor
             for linea in proceso.stderr:
                 if linea.strip():
-                    print(f"[multimedia.ps1] {linea.rstrip()}", file=sys.stderr, flush=True)
+                    print(f"[{self.script}] {linea.rstrip()}", file=sys.stderr, flush=True)
         threading.Thread(target=leer, daemon=True).start()
         threading.Thread(target=errores, daemon=True).start()
         inicio = self._esperar(20)  # primera línea: {"listo": true}
         if not inicio or not inicio.get("listo"):
-            print(f"[multimedia.ps1] no arrancó bien: {inicio}", file=sys.stderr, flush=True)
+            print(f"[{self.script}] no arrancó bien: {inicio}", file=sys.stderr, flush=True)
 
     def _esperar(self, segundos):
         """Siguiente respuesta JSON. Las líneas que no son JSON (avisos) se registran y se saltan."""
@@ -284,7 +286,7 @@ class _AyudanteMultimedia:
                 return json.loads(linea.lstrip("\ufeff"))  # PowerShell puede anteponer la marca BOM
             except json.JSONDecodeError:
                 if linea.strip():
-                    print(f"[multimedia.ps1] {linea.rstrip()}", file=sys.stderr, flush=True)
+                    print(f"[{self.script}] {linea.rstrip()}", file=sys.stderr, flush=True)
         return None
 
     def _cerrar(self):
@@ -292,7 +294,7 @@ class _AyudanteMultimedia:
             self.proceso.kill()
         self.proceso = None
 
-    def pedir(self, orden):
+    def pedir(self, orden, espera=8):
         with self.bloqueo:
             for _ in range(2):  # si falla, un reintento con un proceso nuevo
                 try:
@@ -300,7 +302,7 @@ class _AyudanteMultimedia:
                         self._arrancar()
                     self.proceso.stdin.write(orden + "\n")
                     self.proceso.stdin.flush()
-                    respuesta = self._esperar(8)
+                    respuesta = self._esperar(espera)
                     if respuesta is not None:
                         return respuesta
                 except OSError:
@@ -309,7 +311,8 @@ class _AyudanteMultimedia:
             return None
 
 
-_ayudante = _AyudanteMultimedia()
+_AyudanteMultimedia = AyudantePS  # nombre anterior
+_ayudante = AyudantePS()
 
 # Respuesta de ejemplo para el modo simulado.
 MULTIMEDIA_SIMULADA = {

@@ -135,6 +135,16 @@ class PruebasServidor(unittest.TestCase):
         self.assertEqual(self.pedir("/api/icono/bloc")[0], 404)
         self.assertEqual(self.pedir("/api/icono/no-existe")[0], 404)
 
+    def test_sistema(self):
+        self.assertEqual(self.pedir("/api/sistema", pin="0000")[0], 401)
+        estado, cuerpo = self.pedir("/api/sistema")
+        self.assertEqual(estado, 200)
+        datos = json.loads(cuerpo)
+        self.assertIn("procesador", datos["componentes"])
+        for clave in ("cpu", "memoria", "gpu", "discos", "encendida"):
+            self.assertIn(clave, datos["uso"])
+        self.assertTrue(0 <= datos["uso"]["cpu"] <= 100)
+
     def test_actualizar_simulado(self):
         self.assertEqual(self.pedir("/api/actualizacion", pin="0000")[0], 401)
         self.assertTrue(json.loads(self.pedir("/api/actualizacion")[1])["hay_nueva"])

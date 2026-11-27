@@ -61,6 +61,7 @@ function abrirPestana(nombre) {
   document.querySelectorAll("[data-pestana]").forEach((b) => b.classList.toggle("activa", b.dataset.pestana === nombre));
   window.scrollTo(0, 0);
   if (nombre === "multimedia") { actualizarMultimedia(); leerVolumen(); }
+  if (nombre === "sistema") actualizarSistema();
 }
 document.querySelectorAll("[data-pestana]").forEach((boton) => {
   boton.addEventListener("click", () => abrirPestana(boton.dataset.pestana));
@@ -291,6 +292,133 @@ $("volumen-barra").addEventListener("change", () => {
   enviarNivel();
 });
 
+// --- Sistema: componentes y uso ------------------------------------------------------
+
+function tamano(bytes, decimal = false) {
+  if (bytes == null) return "";
+  const base = decimal ? 1000 : 1024;
+  const gb = bytes / base ** 3;
+  if (gb >= 1000) return `${(gb / base).toFixed(gb / base >= 10 ? 0 : 1).replace(/\.0$/, "")} TB`;
+  if (gb >= 1) return `${gb >= 100 ? Math.round(gb) : gb.toFixed(1).replace(/\.0$/, "")} GB`;
+  return `${Math.round(bytes / base ** 2)} MB`;
+}
+
+function duracion(segundos) {
+  if (segundos == null) return "";
+  const d = Math.floor(segundos / 86400), h = Math.floor((segundos % 86400) / 3600), m = Math.floor((segundos % 3600) / 60);
+  if (d) return `${d} d ${h} h`;
+  if (h) return `${h} h ${m} min`;
+  return `${m} min`;
+}
+
+function pintarMedidor(id, porcentaje) {
+  const medidor = $(id);
+  const valor = porcentaje == null ? null : Math.max(0, Math.min(100, porcentaje));
+  medidor.querySelector(".medidor-valor").textContent = valor == null ? "–" : `${valor}%`;
+  medidor.querySelector(".anillo").style.strokeDashoffset = 263.9 * (1 - (valor || 0) / 100);
+  medidor.classList.toggle("alto", (valor || 0) >= 85);
+}
+
+function fila(etiqueta, valor, extra) {
+  const div = document.createElement("div");
+  div.className = "fila-lista";
+  const e = document.createElement("p"); e.className = "fila-etiqueta"; e.textContent = etiqueta;
+  const v = document.createElement("p"); v.className = "fila-valor"; v.textContent = valor || "Desconocido";
+  div.append(e, v);
+  if (extra) { const x = document.createElement("p"); x.className = "fila-extra"; x.textContent = extra; div.append(x); }
+  return div;
+}
+
+// Windows a veces da el fabricante de la RAM como código JEDEC (p. ej. "01980000802C").
+const FABRICANTES_RAM = [["0198", "Kingston"], ["9801", "Kingston"], ["80CE", "Samsung"], ["CE00", "Samsung"],
+  ["80AD", "SK hynix"], ["AD00", "SK hynix"], ["859B", "Crucial"], ["9B05", "Crucial"], ["802C", "Micron"],
+  ["2C00", "Micron"], ["04CD", "G.Skill"], ["CD04", "G.Skill"], ["029E", "Corsair"], ["9E02", "Corsair"],
+  ["0B83", "ADATA"], ["04CB", "ADATA"]];
+function fabricanteRam(texto) {
+  const t = (texto || "").trim();
+  if (!/^[0-9A-F]{4,}$/i.test(t)) return t;
+  const hallado = FABRICANTES_RAM.find(([codigo]) => t.toUpperCase().includes(codigo));
+  return hallado ? hallado[1] : "";
+}
+
+const limpiar = (texto) => (texto || "").replace(/\(R\)|\(TM\)|®|™/gi, "").replace(/\s+/g, " ").trim();
+const generico = (texto) => !texto || /system (product|manufacturer)|to be filled|default string/i.test(texto);
+
+let componentesPintados = false;
+
+function pintarComponentes(c) {
+  const lista = $("sistema-componentes");
+  lista.replaceChildren();
+  const p = c.procesador || {};
+  lista.append(fila("Procesador", limpiar(p.nombre),
+    [p.nucleos && `${p.nucleos} núcleos`, p.hilos && `${p.hilos} hilos`, p.mhz && `${(p.mhz / 1000).toFixed(1)} GHz`].filter(Boolean).join(" · ")));
+  for (const g of c.graficas || []) {
+    lista.append(fila("Gráfica", limpiar(g.nombre), [g.memoria && `${tamano(g.memoria)} de memoria`, g.driver && `Driver ${g.driver}`].filter(Boolean).join(" · ")));
+  }
+  const m = c.memoria || {};
+  const modulos = m.modulos || [];
+  const velocidad = modulos.find((x) => x.velocidad)?.velocidad;
+  const iguales = modulos.length && modulos.every((x) => x.capacidad === modulos[0].capacidad);
+  lista.append(fila("Memoria RAM", tamano(m.total),
+    [modulos.length && (iguales ? `${modulos.length} × ${tamano(modulos[0].capacidad)}` : `${modulos.length} módulos`),
+     velocidad && `${velocidad} MHz`, limpiar(fabricanteRam(modulos[0]?.fabricante))].filter(Boolean).join(" · ")));
+  const tipos = c.discos_tipo || [];
+  for (const d of c.discos || []) {
+    const t = tipos.find((x) => x.modelo && d.modelo && (x.modelo.includes(d.modelo) || d.modelo.includes(x.modelo)));
+    const tipo = t && t.tipo && !/unspecified|^0$/i.test(t.tipo) ? t.tipo : "";
+    const bus = t && t.bus && !/unknown/i.test(t.bus) ? t.bus : "";
+    lista.append(fila("Disco", limpiar(d.modelo), [tamano(d.tamano, true), tipo, bus].filter(Boolean).join(" · ")));
+  }
+  if (c.placa) lista.append(fila("Placa base", limpiar([c.placa.fabricante, c.placa.modelo].filter(Boolean).join(" "))));
+  if (!generico(c.modelo)) lista.append(fila("Equipo", limpiar([c.fabricante, c.modelo].filter(Boolean).join(" "))));
+  if (c.windows) lista.append(fila("Sistema operativo", limpiar(c.windows.nombre).replace(/^Microsoft /, ""),
+    c.windows.compilacion && `Compilación ${c.windows.compilacion}`));
+  componentesPintados = true;
+}
+
+function pintarDiscos(discos) {
+  const lista = $("sistema-discos");
+  lista.replaceChildren();
+  if (!discos || !discos.length) { lista.append(fila("Discos", "Sin datos")); return; }
+  for (const d of discos) {
+    const div = document.createElement("div");
+    div.className = "fila-lista";
+    const cab = document.createElement("div"); cab.className = "disco-cabecera";
+    const nombre = document.createElement("span"); nombre.textContent = d.nombre ? `${d.nombre} (${d.unidad})` : d.unidad;
+    const cifra = document.createElement("span"); cifra.textContent = `${tamano(d.usado, true)} de ${tamano(d.total, true)}`;
+    cab.append(nombre, cifra);
+    const barra = document.createElement("div"); barra.className = "barra-uso" + (d.porcentaje >= 90 ? " alto" : "");
+    const relleno = document.createElement("div"); relleno.style.width = `${d.porcentaje}%`;
+    barra.append(relleno);
+    div.append(cab, barra);
+    lista.append(div);
+  }
+}
+
+let consultandoSistema = false;
+
+async function actualizarSistema() {
+  if (consultandoSistema || !pestanaVisible("sistema")) return;
+  consultandoSistema = true;
+  try {
+    const { componentes, uso } = await api("/api/sistema");
+    pintarMedidor("medidor-cpu", uso.cpu);
+    pintarMedidor("medidor-memoria", uso.memoria?.porcentaje);
+    pintarMedidor("medidor-gpu", uso.gpu?.uso);
+    const partes = [];
+    if (uso.memoria) partes.push(`RAM ${tamano(uso.memoria.usada)} de ${tamano(uso.memoria.total)}`);
+    if (uso.gpu?.memoria_usada) partes.push(`Gráfica ${tamano(uso.gpu.memoria_usada)}${uso.gpu.memoria_tipo === "compartida" ? " compartida" : ""}`);
+    $("detalle-memoria").textContent = partes.join(" · ");
+    $("sistema-encendida").textContent = uso.encendida != null ? `Encendida hace ${duracion(uso.encendida)}` : "";
+    pintarDiscos(uso.discos);
+    if (componentes && !componentesPintados) pintarComponentes(componentes);
+  } catch (error) {
+    if (error.estado === 401) cerrarSesion("El PIN cambió. Vuelve a escribirlo.");
+  } finally {
+    consultandoSistema = false;
+  }
+}
+
 // --- Actualizar ControlPC -----------------------------------------------------------
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -396,6 +524,7 @@ $("salir").addEventListener("click", () => cerrarSesion());
 
 setInterval(() => { if (!$("vista-panel").hidden && !document.hidden) comprobarEstado(); }, 5000);
 setInterval(() => { if (!document.hidden) { actualizarMultimedia(); leerVolumen(); } }, 3000);
+setInterval(() => { if (!document.hidden) actualizarSistema(); }, 2500);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden || $("vista-panel").hidden) return;
   comprobarEstado();

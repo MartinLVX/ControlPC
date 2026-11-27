@@ -22,6 +22,7 @@ from pathlib import Path
 
 import acciones
 import actualizar
+import sistema
 
 CARPETA = Path(__file__).resolve().parent
 CARPETA_WEB = (CARPETA.parent / "web").resolve()
@@ -139,6 +140,10 @@ def crear_manejador(config):
                 if not self._autorizado():
                     return
                 return self._json(HTTPStatus.OK, acciones.leer_volumen())
+            if ruta == "/api/sistema":
+                if not self._autorizado():
+                    return
+                return self._json(HTTPStatus.OK, sistema.todo())
             if ruta == "/api/actualizacion":
                 if not self._autorizado():
                     return
