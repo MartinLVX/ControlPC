@@ -16,12 +16,15 @@ import socket
 import sys
 import threading
 import time
+import urllib.parse
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import acciones
 import actualizar
+import entrada
+import pantalla
 import sistema
 
 CARPETA = Path(__file__).resolve().parent
@@ -140,6 +143,28 @@ def crear_manejador(config):
                 if not self._autorizado():
                     return
                 return self._json(HTTPStatus.OK, acciones.leer_volumen())
+            if ruta == "/api/pantalla":
+                if not self._autorizado() or not self._control_remoto_activo():
+                    return
+                consulta = urllib.parse.parse_qs(self.path.partition("?")[2])
+                try:
+                    captura = pantalla.capturar(int(consulta.get("ancho", ["1280"])[0]),
+                                                int(consulta.get("calidad", ["60"])[0]))
+                except ValueError:
+                    return self._json(HTTPStatus.BAD_REQUEST, {"error": "Parámetros inválidos"})
+                if captura is None:
+                    return self._json(HTTPStatus.SERVICE_UNAVAILABLE,
+                                      {"error": "No se pudo ver la pantalla. ¿La PC está bloqueada?"})
+                datos, tipo, ancho, alto = captura
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", tipo)
+                self.send_header("Content-Length", str(len(datos)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Pantalla-Ancho", str(ancho))
+                self.send_header("X-Pantalla-Alto", str(alto))
+                self.end_headers()
+                self.wfile.write(datos)
+                return
             if ruta == "/api/sistema":
                 if not self._autorizado():
                     return
@@ -164,6 +189,12 @@ def crear_manejador(config):
                 return self._imagen(acciones.icono(app) if app else None, cache=True)
             return self._archivo(ruta)
 
+        def _control_remoto_activo(self):
+            if config.get("control_remoto", True):
+                return True
+            self._json(HTTPStatus.FORBIDDEN, {"error": "El control remoto está desactivado en config.json"})
+            return False
+
         def _imagen(self, datos, cache=False):
             if not datos:
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "Sin imagen"})
@@ -182,7 +213,7 @@ def crear_manejador(config):
 
         def do_POST(self):
             ruta = self.path.split("?", 1)[0]
-            if ruta not in ("/api/accion", "/api/abrir", "/api/volumen", "/api/actualizar"):
+            if ruta not in ("/api/accion", "/api/abrir", "/api/volumen", "/api/actualizar", "/api/entrada"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "No existe"})
             if not self._autorizado():
                 return
@@ -200,6 +231,14 @@ def crear_manejador(config):
                 except Exception as error:  # noqa: BLE001 - se informa al celular
                     return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(error)})
                 return self._json(HTTPStatus.OK, {"ok": True, "accion": nombre, **extra})
+
+            if ruta == "/api/entrada":
+                if not self._control_remoto_activo():
+                    return
+                try:
+                    return self._json(HTTPStatus.OK, entrada.ejecutar(datos))
+                except (KeyError, TypeError, ValueError) as error:
+                    return self._json(HTTPStatus.BAD_REQUEST, {"error": f"Orden inválida: {error}"})
 
             if ruta == "/api/actualizar":
                 if acciones.SIMULAR:  # en pruebas no se descarga ni se sobrescribe nada
