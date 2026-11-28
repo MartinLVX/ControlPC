@@ -75,25 +75,6 @@ p { margin: 0; }
 .boton-redondo.grande { width: 58px; height: 58px; color: var(--texto); background: transparent; border-color: transparent; }
 .boton-redondo.grande svg { width: 28px; height: 28px; }
 
-/* Aplicaciones */
-.rejilla-apps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.app {
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 18px 8px 14px; border-radius: var(--radio);
-  background: var(--superficie); border: 1px solid var(--borde);
-  transition: transform .1s, background .15s;
-  min-width: 0;
-}
-.app:active { transform: scale(.95); background: var(--superficie-activa); }
-.app:disabled { opacity: .55; }
-.app-icono { width: 52px; height: 52px; border-radius: 12px; object-fit: contain; }
-.app-inicial {
-  width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center;
-  background: linear-gradient(145deg, #3a3a3f, #222225); color: var(--claro);
-  font-size: 1.35rem; font-weight: 600;
-}
-.app-nombre { font-size: .82rem; color: var(--claro); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vacio { grid-column: 1 / -1; color: var(--tenue); font-size: .9rem; line-height: 1.5; padding: 24px 0; text-align: center; }
 
 /* Multimedia */
 .reproduciendo {
@@ -157,7 +138,7 @@ p { margin: 0; }
 /* Barra de pestañas */
 .barra-pestanas {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(3, 1fr);
   height: calc(var(--barra) + env(safe-area-inset-bottom));
   padding: 8px max(12px, env(safe-area-inset-left)) env(safe-area-inset-bottom);
   background: rgba(14, 14, 16, .82);

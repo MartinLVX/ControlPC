@@ -68,46 +68,6 @@ document.querySelectorAll("[data-pestana]").forEach((boton) => {
 });
 const pestanaVisible = (nombre) => !$("vista-panel").hidden && !$(`pestana-${nombre}`).hidden;
 
-// --- Aplicaciones -------------------------------------------------------------
-
-function pintarApps(apps) {
-  const contenedor = $("apps");
-  contenedor.replaceChildren();
-  if (!apps.length) {
-    const vacio = document.createElement("p");
-    vacio.className = "vacio";
-    vacio.textContent = "No hay aplicaciones. Agrégalas en servidor/config.json de tu PC.";
-    contenedor.append(vacio);
-    return;
-  }
-  for (const app of apps) {
-    const boton = document.createElement("button");
-    boton.className = "app";
-
-    // Mientras llega el icono real (o si no hay), se muestra la inicial.
-    const inicial = document.createElement("span");
-    inicial.className = "app-inicial";
-    inicial.textContent = app.nombre.trim().charAt(0).toUpperCase();
-
-    const nombre = document.createElement("span");
-    nombre.className = "app-nombre";
-    nombre.textContent = app.nombre;
-
-    boton.append(inicial, nombre);
-    boton.addEventListener("click", () => ejecutar(boton, "/api/abrir", { id: app.id }, `Abriendo ${app.nombre}`));
-    contenedor.append(boton);
-
-    imagen(`/api/icono/${encodeURIComponent(app.id)}`).then((url) => {
-      if (!url) return;
-      const img = document.createElement("img");
-      img.className = "app-icono";
-      img.alt = "";
-      img.src = url;
-      img.onload = () => inicial.replaceWith(img);
-    });
-  }
-}
-
 // --- Acciones -------------------------------------------------------------------
 
 async function ejecutar(boton, ruta, datos, textoOk) {
@@ -480,17 +440,19 @@ async function comprobarEstado() {
   } catch { /* sin respuesta */ }
   $("punto").className = "punto " + (encendida ? "encendida" : "apagada");
   $("texto-estado").textContent = encendida ? "Encendida" : "Sin conexión";
-  // Si la PC volvió y aún no se cargaron las apps, se cargan ahora.
-  if (encendida && !$("apps").childElementCount) entrar();
+  // Si la PC volvió y aún no se cargó el nombre del equipo, se carga ahora.
+  if (encendida && !infoCargada) entrar();
 }
 
 // --- Sesión ------------------------------------------------------------------
+
+let infoCargada = false;
 
 async function entrar() {
   try {
     const info = await api("/api/info");
     $("nombre-equipo").textContent = info.equipo;
-    pintarApps(info.apps);
+    infoCargada = true;
     mostrar("panel");
     abrirPestana("multimedia");  // la app siempre abre en Multimedia
     comprobarEstado();
@@ -508,6 +470,7 @@ async function entrar() {
 
 function cerrarSesion(mensaje = "") {
   pin = "";
+  infoCargada = false;
   guardar(CLAVE_PIN, "");
   $("error-pin").textContent = mensaje;
   $("campo-pin").value = "";
@@ -520,7 +483,9 @@ $("form-pin").addEventListener("submit", async (evento) => {
   if (await entrar()) guardar(CLAVE_PIN, pin);
 });
 
-$("salir").addEventListener("click", () => cerrarSesion());
+$("salir").addEventListener("click", async () => {
+  if (await confirmar("¿Cerrar sesión?", "Tendrás que escribir el PIN otra vez para entrar.", "Salir")) cerrarSesion();
+});
 
 setInterval(() => { if (!$("vista-panel").hidden && !document.hidden) comprobarEstado(); }, 5000);
 setInterval(() => { if (!document.hidden) { actualizarMultimedia(); leerVolumen(); } }, 3000);
