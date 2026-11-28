@@ -161,6 +161,22 @@ def anterior():
     return _control("anterior", VK_MEDIA_PREV)
 
 
+def saltar(segundos):
+    """Lleva la canción al segundo indicado (barra de progreso)."""
+    segundos = max(0.0, float(segundos))
+    if SIMULAR:
+        MULTIMEDIA_SIMULADA["posicion"] = round(min(segundos, MULTIMEDIA_SIMULADA["duracion"]), 1)
+        _reloj_simulado[0] = time.monotonic()
+        _registrar(f"saltar {segundos:.1f}")
+        return {"ok": True}
+    respuesta = _ayudante.pedir(f"posicion {segundos:.1f}")
+    if not respuesta:
+        raise RuntimeError("No se pudo hablar con el reproductor")
+    if not respuesta.get("abierta"):
+        raise RuntimeError(f"{_config['multimedia_app'] or 'El reproductor'} está cerrado")
+    return {"ok": bool(respuesta.get("ok"))}
+
+
 def abrir_reproductor():
     """Abre la app de música configurada (Spotify por defecto)."""
     destino = _config["multimedia_abrir"]
@@ -315,6 +331,7 @@ _AyudanteMultimedia = AyudantePS  # nombre anterior
 _ayudante = AyudantePS()
 
 # Respuesta de ejemplo para el modo simulado.
+_reloj_simulado = [time.monotonic()]
 MULTIMEDIA_SIMULADA = {
     "activo": True,
     "abierta": True,
@@ -325,6 +342,7 @@ MULTIMEDIA_SIMULADA = {
     "estado": "Playing",
     "posicion": 72,
     "duracion": 215,
+    "buscable": True,
     "portada": None,
 }
 
@@ -337,6 +355,8 @@ def multimedia():
     """
     if SIMULAR:
         datos = dict(MULTIMEDIA_SIMULADA)
+        # La canción simulada avanza sola, como una real.
+        datos["posicion"] = round((datos["posicion"] + time.monotonic() - _reloj_simulado[0]) % datos["duracion"], 1)
     else:
         CARPETA_CACHE.mkdir(exist_ok=True)
         datos = _ayudante.pedir(f"estado {RUTA_PORTADA}") or {"activo": False, "abierta": False}

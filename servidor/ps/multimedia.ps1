@@ -6,6 +6,7 @@
 # Órdenes:
 #   estado <ruta_portada>   lo que suena (y guarda la carátula en esa ruta si cambió)
 #   play_pausa | siguiente | anterior
+#   posicion <segundos>     salta a ese punto de la canción
 #
 # Usa los controles de medios de Windows (Windows 10 u 11). Con -App se elige qué
 # aplicación controlar (por ejemplo "Spotify"); sin -App se usa la sesión actual de Windows.
@@ -91,10 +92,31 @@ function Estado([string]$rutaPortada) {
         album    = $propiedades.AlbumTitle
         app      = $sesion.SourceAppUserModelId
         estado   = $reproduccion.PlaybackStatus.ToString()
-        posicion = [math]::Round($linea.Position.TotalSeconds)
-        duracion = [math]::Round($linea.EndTime.TotalSeconds)
+        posicion = [math]::Round((Posicion-Actual $linea $reproduccion), 1)
+        duracion = [math]::Round($linea.EndTime.TotalSeconds, 1)
+        buscable = [bool]$reproduccion.Controls.IsPlaybackPositionEnabled
         portada  = $hayPortada
     }
+}
+
+# Spotify solo informa la posición cuando algo cambia (pausa, salto…). Mientras suena,
+# se calcula sumando el tiempo que pasó desde ese último aviso.
+function Posicion-Actual($linea, $reproduccion) {
+    $segundos = $linea.Position.TotalSeconds
+    if ($reproduccion.PlaybackStatus.ToString() -eq "Playing" -and $linea.LastUpdatedTime.Year -gt 2000) {
+        $segundos += ([DateTimeOffset]::Now - $linea.LastUpdatedTime).TotalSeconds
+    }
+    $fin = $linea.EndTime.TotalSeconds
+    if ($fin -gt 0 -and $segundos -gt $fin) { $segundos = $fin }
+    if ($segundos -lt 0) { $segundos = 0 }
+    return $segundos
+}
+
+function Saltar([double]$segundos) {
+    $sesion = Buscar-Sesion
+    if (-not $sesion) { return @{ ok = $false; abierta = $false } }
+    $ticks = [long]([math]::Max(0, $segundos) * 10000000)
+    return @{ ok = [bool](Esperar ($sesion.TryChangePlaybackPositionAsync($ticks)) ([bool])); abierta = $true }
 }
 
 function Control([string]$orden) {
@@ -116,6 +138,7 @@ while ($null -ne ($entrada = [Console]::In.ReadLine())) {
         switch ($partes[0]) {
             "estado" { Responder (Estado ($(if ($partes.Count -gt 1) { $partes[1] } else { "" }))) }
             { $_ -in "play_pausa", "siguiente", "anterior" } { Responder (Control $partes[0]) }
+            "posicion" { Responder (Saltar ([double]::Parse($partes[1], [Globalization.CultureInfo]::InvariantCulture))) }
             default { Responder @{ error = "Orden desconocida" } }
         }
     } catch {

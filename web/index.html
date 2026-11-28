@@ -80,6 +80,13 @@
           <button id="boton-play" class="boton-play" data-accion="reproducir_pausar" aria-label="Reproducir o pausar"><svg><use href="#i-play"/></svg></button>
           <button class="boton-redondo grande" data-accion="siguiente" aria-label="Siguiente"><svg><use href="#i-siguiente"/></svg></button>
         </div>
+        <div id="progreso" class="progreso" hidden>
+          <div id="progreso-pista" class="progreso-pista" role="slider" tabindex="0" aria-label="Posición de la canción" aria-valuemin="0">
+            <svg id="progreso-svg" class="progreso-svg" aria-hidden="true"><path id="progreso-onda" class="progreso-onda"/><path id="progreso-resto" class="progreso-resto"/></svg>
+            <span id="progreso-perilla" class="progreso-perilla"></span>
+          </div>
+          <div class="progreso-tiempos"><span id="progreso-actual">0:00</span><span id="progreso-total">0:00</span></div>
+        </div>
       </section>
 
       <div class="volumen-cabecera">
