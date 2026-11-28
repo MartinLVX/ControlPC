@@ -213,7 +213,8 @@ def crear_manejador(config):
 
         def do_POST(self):
             ruta = self.path.split("?", 1)[0]
-            if ruta not in ("/api/accion", "/api/abrir", "/api/volumen", "/api/actualizar", "/api/entrada"):
+            if ruta not in ("/api/accion", "/api/abrir", "/api/volumen", "/api/actualizar", "/api/entrada",
+                            "/api/multimedia/posicion"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "No existe"})
             if not self._autorizado():
                 return
@@ -231,6 +232,15 @@ def crear_manejador(config):
                 except Exception as error:  # noqa: BLE001 - se informa al celular
                     return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(error)})
                 return self._json(HTTPStatus.OK, {"ok": True, "accion": nombre, **extra})
+
+            if ruta == "/api/multimedia/posicion":
+                segundos = datos.get("segundos")
+                if isinstance(segundos, bool) or not isinstance(segundos, (int, float)) or not 0 <= segundos <= 86400:
+                    return self._json(HTTPStatus.BAD_REQUEST, {"error": "Posición inválida"})
+                try:
+                    return self._json(HTTPStatus.OK, acciones.saltar(segundos))
+                except RuntimeError as error:
+                    return self._json(HTTPStatus.CONFLICT, {"error": str(error)})
 
             if ruta == "/api/entrada":
                 if not self._control_remoto_activo():

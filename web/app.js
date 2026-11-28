@@ -160,6 +160,7 @@ async function actualizarMultimedia() {
     }
     $("pista-app").textContent = activo ? nombreApp(m.app) : "";
     const sonando = m.estado === "Playing";
+    actualizarProgreso(activo && m.abierta !== false ? m : null, sonando);
     $("boton-play").querySelector("use").setAttribute("href", sonando ? "#i-pausa" : "#i-play");
     $("boton-play").setAttribute("aria-label", sonando ? "Pausar" : "Reproducir");
 
@@ -186,6 +187,133 @@ $("abrir-reproductor").addEventListener("click", async () => {
     setTimeout(actualizarMultimedia, 6000);
   }
 });
+
+// --- Barra de progreso de la canción (línea ondulada) ----------------------------------
+
+const progreso = {
+  posicion: 0, duracion: 0, desde: 0, sonando: false, buscable: true,
+  arrastrando: false, vistaPrevia: 0, ignorarHasta: 0, amplitud: 0, fase: 0, animando: false,
+};
+
+function minutos(segundos) {
+  segundos = Math.max(0, Math.floor(segundos));
+  const h = Math.floor(segundos / 3600), m = Math.floor((segundos % 3600) / 60), s = segundos % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function posicionActual() {
+  if (progreso.arrastrando) return progreso.vistaPrevia;
+  const extra = progreso.sonando ? (performance.now() - progreso.desde) / 1000 : 0;
+  return Math.min(progreso.duracion, progreso.posicion + extra);
+}
+
+// Datos nuevos del servidor (cada 3 s). Entre una consulta y otra la barra avanza sola.
+function actualizarProgreso(m, sonando) {
+  const hay = m && m.duracion > 0;
+  $("progreso").hidden = !hay;
+  if (!hay) return;
+  progreso.duracion = m.duracion;
+  progreso.buscable = m.buscable !== false;
+  $("progreso").classList.toggle("fija", !progreso.buscable);
+  $("progreso-pista").setAttribute("aria-valuemax", String(Math.round(m.duracion)));
+  if (!progreso.arrastrando && performance.now() > progreso.ignorarHasta) {
+    progreso.posicion = m.posicion || 0;
+    progreso.desde = performance.now();
+    progreso.sonando = sonando;
+  }
+  animarProgreso();
+}
+
+function dibujarProgreso() {
+  const pista = $("progreso-pista");
+  const ancho = pista.clientWidth, alto = pista.clientHeight;
+  if (!ancho) return;
+  const medio = alto / 2;
+  const actual = posicionActual();
+  const x = progreso.duracion ? (actual / progreso.duracion) * ancho : 0;
+  // La onda se aplana poco a poco al pausar y vuelve a ondular al reproducir.
+  const objetivo = progreso.sonando || progreso.arrastrando ? 3.2 : 0;
+  progreso.amplitud += (objetivo - progreso.amplitud) * 0.12;
+  const largoOnda = 22;
+  let d = `M0 ${medio.toFixed(2)}`;
+  for (let i = 2; i <= x; i += 2) {
+    const y = medio + progreso.amplitud * Math.sin((i / largoOnda) * 2 * Math.PI - progreso.fase);
+    d += ` L${i} ${y.toFixed(2)}`;
+  }
+  $("progreso-onda").setAttribute("d", x > 1 ? d : "");
+  $("progreso-resto").setAttribute("d", x < ancho - 1 ? `M${Math.max(x + 8, 0).toFixed(1)} ${medio} L${ancho} ${medio}` : "");
+  $("progreso-perilla").style.transform = `translateX(${x.toFixed(1)}px)`;
+  $("progreso-actual").textContent = minutos(actual);
+  $("progreso-total").textContent = minutos(progreso.duracion);
+  pista.setAttribute("aria-valuenow", String(Math.round(actual)));
+  pista.setAttribute("aria-valuetext", `${minutos(actual)} de ${minutos(progreso.duracion)}`);
+}
+
+function animarProgreso() {
+  if (progreso.animando) return;
+  progreso.animando = true;
+  let anterior = performance.now();
+  const paso = (ahora) => {
+    if ($("progreso").hidden || document.hidden || !pestanaVisible("multimedia")) { progreso.animando = false; return; }
+    if (progreso.sonando) progreso.fase += ((ahora - anterior) / 1000) * 2 * Math.PI * 0.8;
+    anterior = ahora;
+    dibujarProgreso();
+    requestAnimationFrame(paso);
+  };
+  requestAnimationFrame(paso);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) animarProgreso(); });
+
+async function saltarA(segundos) {
+  segundos = Math.max(0, Math.min(progreso.duracion - 0.5, segundos));
+  progreso.posicion = segundos;
+  progreso.desde = performance.now();
+  progreso.ignorarHasta = performance.now() + 2500;  // que la próxima consulta no la regrese
+  dibujarProgreso();
+  try {
+    await api("/api/multimedia/posicion", { segundos: Math.round(segundos * 10) / 10 });
+  } catch (error) {
+    if (error.estado === 401) return cerrarSesion("El PIN cambió. Vuelve a escribirlo.");
+    progreso.ignorarHasta = 0;
+    avisar(error.message || "No se pudo mover la canción", true);
+  }
+}
+
+function segundosEn(evento) {
+  const caja = $("progreso-pista").getBoundingClientRect();
+  return Math.min(1, Math.max(0, (evento.clientX - caja.left) / caja.width)) * progreso.duracion;
+}
+
+const pistaProgreso = $("progreso-pista");
+pistaProgreso.addEventListener("pointerdown", (e) => {
+  if (!progreso.buscable || !progreso.duracion) return;
+  e.preventDefault();
+  pistaProgreso.setPointerCapture(e.pointerId);
+  progreso.arrastrando = true;
+  progreso.vistaPrevia = segundosEn(e);
+  pistaProgreso.classList.add("arrastrando");
+  if (navigator.vibrate) navigator.vibrate(8);
+  dibujarProgreso();
+});
+pistaProgreso.addEventListener("pointermove", (e) => {
+  if (!progreso.arrastrando) return;
+  progreso.vistaPrevia = segundosEn(e);
+  dibujarProgreso();
+});
+const soltarProgreso = (e, enviar) => {
+  if (!progreso.arrastrando) return;
+  progreso.arrastrando = false;
+  pistaProgreso.classList.remove("arrastrando");
+  if (enviar) saltarA(segundosEn(e)); else dibujarProgreso();
+};
+pistaProgreso.addEventListener("pointerup", (e) => soltarProgreso(e, true));
+pistaProgreso.addEventListener("pointercancel", (e) => soltarProgreso(e, false));
+pistaProgreso.addEventListener("keydown", (e) => {
+  if (!progreso.buscable) return;
+  const cambio = { ArrowRight: 5, ArrowLeft: -5 }[e.key];
+  if (cambio) { e.preventDefault(); saltarA(posicionActual() + cambio); }
+});
+window.addEventListener("resize", dibujarProgreso);
 
 // --- Volumen (de 1 en 1) -----------------------------------------------------------
 

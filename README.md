@@ -2,7 +2,7 @@
 
 Controla tu PC con Windows desde el iPhone, en tu misma red WiFi. La app abre en Multimedia y tiene tres pestañas:
 
-- **Multimedia:** enlazada a Spotify de escritorio. Muestra la canción (título, artista y carátula), con anterior, reproducir/pausar y siguiente que van directo a Spotify aunque esté minimizado. Si Spotify está cerrado, hay un botón para abrirlo. El volumen se mueve de 1 en 1 (o con la barra) y muestra el nivel exacto.
+- **Multimedia:** enlazada a Spotify de escritorio. Muestra la canción (título, artista y carátula), con anterior, reproducir/pausar y siguiente que van directo a Spotify aunque esté minimizado. Si Spotify está cerrado, hay un botón para abrirlo. Debajo de los botones hay una barra ondulada con el avance de la canción: tócala o arrástrala para saltar a otra parte. El volumen se mueve de 1 en 1 (o con la barra) y muestra el nivel exacto.
 - **Sistema:** uso en vivo del procesador, la memoria, la gráfica y los discos (las mismas cifras que el Administrador de tareas), cuánto tiempo lleva encendida y los componentes de la PC.
 - **Equipo:** bloquear, suspender, reiniciar, apagar, **control remoto** (ver la pantalla en vivo y usar el mouse y el teclado desde el iPhone) y actualizar ControlPC.
 

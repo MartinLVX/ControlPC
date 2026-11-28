@@ -153,6 +153,17 @@ class PruebasServidor(unittest.TestCase):
         self.assertEqual(estado, 200)
         self.assertTrue(json.loads(cuerpo)["actualizado"])
 
+    def test_saltar_en_la_cancion(self):
+        m = json.loads(self.pedir("/api/multimedia")[1])
+        self.assertGreater(m["duracion"], 0)
+        self.assertTrue(m["buscable"])
+        self.assertEqual(self.pedir("/api/multimedia/posicion", {"segundos": 120.5})[0], 200)
+        self.assertIn("saltar 120.5", acciones.historial)
+        self.assertAlmostEqual(json.loads(self.pedir("/api/multimedia")[1])["posicion"], 120.5, delta=1)
+        for malo in ({"segundos": -1}, {"segundos": "10"}, {"segundos": True}, {}):
+            self.assertEqual(self.pedir("/api/multimedia/posicion", malo)[0], 400, malo)
+        self.assertEqual(self.pedir("/api/multimedia/posicion", {"segundos": 5}, pin="0000")[0], 401)
+
     def test_pantalla_simulada(self):
         self.assertEqual(self.pedir("/api/pantalla", pin="0000")[0], 401)
         peticion = urllib.request.Request(self.base + "/api/pantalla?ancho=800", headers={"X-PIN": "1234"})
