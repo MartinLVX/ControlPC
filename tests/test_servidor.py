@@ -153,6 +153,42 @@ class PruebasServidor(unittest.TestCase):
         self.assertEqual(estado, 200)
         self.assertTrue(json.loads(cuerpo)["actualizado"])
 
+    def test_pantalla_simulada(self):
+        self.assertEqual(self.pedir("/api/pantalla", pin="0000")[0], 401)
+        peticion = urllib.request.Request(self.base + "/api/pantalla?ancho=800", headers={"X-PIN": "1234"})
+        with urllib.request.urlopen(peticion) as r:
+            self.assertEqual(r.headers["X-Pantalla-Ancho"], "1920")
+            self.assertEqual(r.headers["X-Pantalla-Alto"], "1080")
+            self.assertIn(b"<svg", r.read())
+
+    def test_entrada_mouse_y_teclado(self):
+        ordenes = [
+            {"tipo": "mover", "x": 0.5, "y": 0.5},
+            {"tipo": "boton", "boton": "derecho", "x": 0, "y": 0},
+            {"tipo": "mover_relativo", "dx": 10, "dy": 5},
+            {"tipo": "rueda", "pasos": -2},
+            {"tipo": "escribir", "texto": "hola ñ"},
+            {"tipo": "teclas", "teclas": ["ctrl", "c"]},
+        ]
+        for orden in ordenes:
+            self.assertEqual(self.pedir("/api/entrada", orden)[0], 200, orden)
+        self.assertEqual(acciones.historial, ["mover 960,540", "mover 0,0", "clic derecho", "mover 10,5",
+                                              "rueda -2", "escribir hola ñ", "teclas ctrl+c"])
+
+    def test_entrada_invalida(self):
+        self.assertEqual(self.pedir("/api/entrada", {"tipo": "formatear"})[0], 400)
+        self.assertEqual(self.pedir("/api/entrada", {"tipo": "teclas", "teclas": ["nada"]})[0], 400)
+        self.assertEqual(self.pedir("/api/entrada", {"tipo": "mover"})[0], 400)
+        self.assertEqual(self.pedir("/api/entrada", {"tipo": "mover", "x": 0.1, "y": 0.1}, pin="0000")[0], 401)
+
+    def test_control_remoto_desactivado(self):
+        self.config["control_remoto"] = False
+        try:
+            self.assertEqual(self.pedir("/api/pantalla")[0], 403)
+            self.assertEqual(self.pedir("/api/entrada", {"tipo": "rueda", "pasos": 1})[0], 403)
+        finally:
+            self.config.pop("control_remoto")
+
     def test_sirve_la_pwa(self):
         estado, cuerpo = self.pedir("/", pin="")
         self.assertEqual(estado, 200)

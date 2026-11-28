@@ -427,6 +427,267 @@ $("boton-actualizar").addEventListener("click", async () => {
   }
 });
 
+// --- Control remoto: ver la pantalla y usar mouse y teclado ----------------------------
+
+const remoto = {
+  abierto: false,
+  modo: "tactil",
+  generacion: 0,      // cambia al cerrar, para que los ciclos viejos se detengan
+  tamano: null,       // tamaño real de la pantalla de la PC
+  cuadros: [],
+};
+
+const AYUDAS = {
+  tactil: "Toca para hacer clic · mantén para clic derecho · arrastra para seleccionar · dos dedos para desplazar",
+  trackpad: "Desliza para mover el cursor · toca para clic · dos dedos: toca para clic derecho, desliza para desplazar",
+};
+
+// Todas las órdenes van en una sola cola, en orden. Si se acumulan movimientos mientras hay
+// una petición en camino, se juntan en uno solo para que el cursor no se quede atrás.
+const colaEntrada = [];
+let entradaEnCamino = false;
+
+async function enviarEntrada(datos) {
+  try { await api("/api/entrada", datos); }
+  catch (error) { if (error.estado === 401) cerrarSesion("El PIN cambió. Vuelve a escribirlo."); }
+}
+
+function orden(datos) {
+  const ultima = colaEntrada[colaEntrada.length - 1];
+  if (ultima && datos.tipo === "mover" && ultima.tipo === "mover") colaEntrada[colaEntrada.length - 1] = datos;
+  else if (ultima && datos.tipo === "mover_relativo" && ultima.tipo === "mover_relativo") { ultima.dx += datos.dx; ultima.dy += datos.dy; }
+  else colaEntrada.push(datos);
+  procesarEntrada();
+}
+
+async function procesarEntrada() {
+  if (entradaEnCamino) return;
+  entradaEnCamino = true;
+  while (colaEntrada.length) await enviarEntrada(colaEntrada.shift());
+  entradaEnCamino = false;
+}
+
+const moverA = (x, y) => orden({ tipo: "mover", x, y });
+const moverRelativo = (dx, dy) => orden({ tipo: "mover_relativo", dx, dy });
+
+function posicionEnPantalla(toque) {
+  const caja = $("remoto-imagen").getBoundingClientRect();
+  if (!caja.width) return null;
+  return {
+    x: Math.min(1, Math.max(0, (toque.clientX - caja.left) / caja.width)),
+    y: Math.min(1, Math.max(0, (toque.clientY - caja.top) / caja.height)),
+  };
+}
+
+async function cicloCaptura(generacion) {
+  const img = $("remoto-imagen");
+  let fallos = 0;
+  while (remoto.abierto && remoto.generacion === generacion) {
+    if (document.hidden) { await esperar(500); continue; }
+    // Resolución pedida según el tamaño en que se ve (en píxeles reales del iPhone).
+    const caja = $("remoto-area").getBoundingClientRect();
+    const ancho = Math.round(Math.min(1920, Math.max(640, caja.width * (window.devicePixelRatio || 2))));
+    const inicio = performance.now();
+    try {
+      const respuesta = await pedir(`/api/pantalla?ancho=${ancho}&calidad=55`);
+      remoto.tamano = { ancho: Number(respuesta.headers.get("X-Pantalla-Ancho")), alto: Number(respuesta.headers.get("X-Pantalla-Alto")) };
+      const url = URL.createObjectURL(await respuesta.blob());
+      await new Promise((listo) => { img.onload = img.onerror = listo; img.src = url; });
+      if (img.dataset.anterior) URL.revokeObjectURL(img.dataset.anterior);
+      img.dataset.anterior = url;
+      $("remoto-mensaje").hidden = true;
+      fallos = 0;
+      const ahora = performance.now();
+      remoto.cuadros = remoto.cuadros.filter((t) => ahora - t < 2000).concat(ahora);
+      $("remoto-estado").textContent = `${(remoto.cuadros.length / 2).toFixed(0)} fps · ${Math.round(ahora - inicio)} ms`;
+      // Máximo ~15 cuadros por segundo para no cargar la PC ni la red.
+      if (ahora - inicio < 66) await esperar(66 - (ahora - inicio));
+    } catch (error) {
+      if (error.estado === 401) { cerrarRemoto(); return cerrarSesion("El PIN cambió. Vuelve a escribirlo."); }
+      fallos++;
+      $("remoto-mensaje").hidden = false;
+      $("remoto-mensaje").textContent = error.estado ? error.message : "Sin conexión con la PC. Reintentando…";
+      await esperar(Math.min(3000, 500 * fallos));
+    }
+  }
+}
+
+function abrirRemoto() {
+  remoto.abierto = true;
+  remoto.generacion++;
+  $("remoto").hidden = false;
+  $("remoto-mensaje").hidden = false;
+  $("remoto-mensaje").textContent = "Conectando…";
+  $("remoto-ayuda").textContent = AYUDAS[remoto.modo];
+  cicloCaptura(remoto.generacion);
+}
+
+function cerrarRemoto() {
+  remoto.abierto = false;
+  remoto.generacion++;
+  $("remoto").hidden = true;
+  $("remoto-entrada").blur();
+  const img = $("remoto-imagen");
+  if (img.dataset.anterior) { URL.revokeObjectURL(img.dataset.anterior); delete img.dataset.anterior; }
+  img.removeAttribute("src");
+}
+
+$("abrir-remoto").addEventListener("click", abrirRemoto);
+$("remoto-cerrar").addEventListener("click", cerrarRemoto);
+
+document.querySelectorAll("[data-modo]").forEach((boton) => {
+  boton.addEventListener("click", () => {
+    remoto.modo = boton.dataset.modo;
+    document.querySelectorAll("[data-modo]").forEach((b) => b.classList.toggle("activo", b === boton));
+    $("remoto-ayuda").textContent = AYUDAS[remoto.modo];
+  });
+});
+
+$("remoto-boton-teclas").addEventListener("click", () => {
+  const panel = $("remoto-teclas");
+  panel.hidden = !panel.hidden;
+  $("remoto-boton-teclas").classList.toggle("activo", !panel.hidden);
+});
+document.querySelectorAll("[data-teclas]").forEach((boton) => {
+  boton.addEventListener("click", () => {
+    if (navigator.vibrate) navigator.vibrate(8);
+    orden({ tipo: "teclas", teclas: boton.dataset.teclas.split("+") });
+  });
+});
+
+// Teclado del iPhone: un campo invisible recibe lo que se escribe y se envía a la PC.
+const campo = $("remoto-entrada");
+$("remoto-boton-teclado").addEventListener("click", () => {
+  if (document.activeElement === campo) campo.blur(); else campo.focus();
+});
+campo.addEventListener("focus", () => $("remoto-boton-teclado").classList.add("activo"));
+campo.addEventListener("blur", () => $("remoto-boton-teclado").classList.remove("activo"));
+campo.addEventListener("beforeinput", (e) => {
+  e.preventDefault();
+  if (e.inputType === "insertText" || e.inputType === "insertReplacementText" || e.inputType === "insertFromPaste") {
+    const texto = e.data ?? e.dataTransfer?.getData("text/plain") ?? "";
+    if (texto) orden({ tipo: "escribir", texto });
+  } else if (e.inputType === "deleteContentBackward") {
+    orden({ tipo: "teclas", teclas: ["retroceso"] });
+  } else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
+    orden({ tipo: "teclas", teclas: ["enter"] });
+  }
+});
+campo.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); orden({ tipo: "teclas", teclas: ["enter"] }); }
+});
+
+// --- Gestos sobre la pantalla ---
+const gesto = { inicio: 0, dedos: 0, x0: 0, y0: 0, ultimoX: 0, ultimoY: 0, movido: false, arrastrando: false, largo: null, scrollY: 0, maxDedos: 0 };
+const UMBRAL = 10;  // px que hay que mover para que no cuente como toque
+
+function centroToques(toques) {
+  let x = 0, y = 0;
+  for (const t of toques) { x += t.clientX; y += t.clientY; }
+  return { clientX: x / toques.length, clientY: y / toques.length };
+}
+
+// En modo trackpad, cuántos píxeles de la PC equivale un píxel del dedo.
+function factorTrackpad() {
+  const caja = $("remoto-imagen").getBoundingClientRect();
+  const base = remoto.tamano && caja.width ? remoto.tamano.ancho / caja.width : 3;
+  return Math.max(1.5, base * 0.9);
+}
+
+const area = $("remoto-area");
+
+area.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  const toques = e.touches;
+  if (gesto.dedos === 0) { gesto.inicio = performance.now(); gesto.movido = false; gesto.maxDedos = 0; }
+  gesto.dedos = toques.length;
+  gesto.maxDedos = Math.max(gesto.maxDedos, toques.length);
+  const c = centroToques(toques);
+  gesto.x0 = gesto.ultimoX = c.clientX;
+  gesto.y0 = gesto.ultimoY = c.clientY;
+  gesto.scrollY = 0;
+  clearTimeout(gesto.largo);
+  if (toques.length === 1 && remoto.modo === "tactil") {
+    // Mantener presionado = clic derecho donde está el dedo.
+    gesto.largo = setTimeout(() => {
+      if (gesto.movido || gesto.dedos !== 1) return;
+      const p = posicionEnPantalla({ clientX: gesto.x0, clientY: gesto.y0 });
+      if (!p) return;
+      if (navigator.vibrate) navigator.vibrate(20);
+      orden({ tipo: "boton", boton: "derecho", ...p });
+      gesto.movido = true;  // que al soltar no haga además un clic izquierdo
+      gesto.largoHecho = true;
+    }, 550);
+  }
+}, { passive: false });
+
+area.addEventListener("touchmove", (e) => {
+  e.preventDefault();
+  const toques = e.touches;
+  const c = centroToques(toques);
+  const dx = c.clientX - gesto.ultimoX, dy = c.clientY - gesto.ultimoY;
+  if (!gesto.movido && Math.hypot(c.clientX - gesto.x0, c.clientY - gesto.y0) > UMBRAL) {
+    gesto.movido = true;
+    clearTimeout(gesto.largo);
+    if (toques.length === 1 && remoto.modo === "tactil" && !gesto.largoHecho) {
+      // Arrastrar con un dedo = mantener el clic izquierdo (seleccionar, mover ventanas).
+      const p = posicionEnPantalla({ clientX: gesto.x0, clientY: gesto.y0 });
+      if (p) { orden({ tipo: "mover", ...p }); orden({ tipo: "boton", boton: "izquierdo", accion: "bajar" }); gesto.arrastrando = true; }
+    }
+  }
+  gesto.ultimoX = c.clientX; gesto.ultimoY = c.clientY;
+  if (!gesto.movido) return;
+  if (toques.length >= 2) {
+    // Dos dedos = rueda del mouse.
+    gesto.scrollY += dy;
+    const pasos = Math.trunc(gesto.scrollY / 30);
+    if (pasos) { gesto.scrollY -= pasos * 30; orden({ tipo: "rueda", pasos }); }
+  } else if (remoto.modo === "trackpad") {
+    const f = factorTrackpad();
+    moverRelativo(dx * f, dy * f);
+  } else if (gesto.arrastrando) {
+    const p = posicionEnPantalla(c);
+    if (p) moverA(p.x, p.y);
+  }
+}, { passive: false });
+
+area.addEventListener("touchend", (e) => {
+  e.preventDefault();
+  gesto.dedos = e.touches.length;
+  if (e.touches.length) return;  // aún queda algún dedo
+  clearTimeout(gesto.largo);
+  const toque = performance.now() - gesto.inicio < 400 && !gesto.movido;
+  if (gesto.arrastrando) {
+    orden({ tipo: "boton", boton: "izquierdo", accion: "subir" });
+  } else if (toque && gesto.maxDedos >= 2) {
+    if (navigator.vibrate) navigator.vibrate(15);
+    orden({ tipo: "boton", boton: "derecho" });
+  } else if (toque) {
+    if (navigator.vibrate) navigator.vibrate(8);
+    if (remoto.modo === "tactil") {
+      const p = posicionEnPantalla({ clientX: gesto.x0, clientY: gesto.y0 });
+      if (p) orden({ tipo: "boton", boton: "izquierdo", ...p });
+    } else {
+      orden({ tipo: "boton", boton: "izquierdo" });
+    }
+  }
+  gesto.arrastrando = false;
+  gesto.largoHecho = false;
+}, { passive: false });
+
+area.addEventListener("touchcancel", () => {
+  clearTimeout(gesto.largo);
+  if (gesto.arrastrando) orden({ tipo: "boton", boton: "izquierdo", accion: "subir" });
+  gesto.arrastrando = false; gesto.largoHecho = false; gesto.dedos = 0;
+});
+
+// Con mouse (al probar desde una computadora): clic = clic.
+area.addEventListener("click", (e) => {
+  if (e.pointerType === "touch" || e.sourceCapabilities?.firesTouchEvents) return;
+  const p = posicionEnPantalla(e);
+  if (p) orden({ tipo: "boton", boton: "izquierdo", ...p });
+});
+
 // --- Estado de la PC -------------------------------------------------------------
 
 async function comprobarEstado() {

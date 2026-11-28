@@ -4,7 +4,7 @@ Controla tu PC con Windows desde el iPhone, en tu misma red WiFi. La app abre en
 
 - **Multimedia:** enlazada a Spotify de escritorio. Muestra la canción (título, artista y carátula), con anterior, reproducir/pausar y siguiente que van directo a Spotify aunque esté minimizado. Si Spotify está cerrado, hay un botón para abrirlo. El volumen se mueve de 1 en 1 (o con la barra) y muestra el nivel exacto.
 - **Sistema:** uso en vivo del procesador, la memoria, la gráfica y los discos (las mismas cifras que el Administrador de tareas), cuánto tiempo lleva encendida y los componentes de la PC.
-- **Equipo:** bloquear, suspender, reiniciar, apagar y actualizar ControlPC.
+- **Equipo:** bloquear, suspender, reiniciar, apagar, **control remoto** (ver la pantalla en vivo y usar el mouse y el teclado desde el iPhone) y actualizar ControlPC.
 
 Son dos partes:
 
@@ -66,12 +66,14 @@ Todo está en `servidor\config.json` (se crea en la primera ejecución). Despué
 - Los iconos se guardan en `servidor\cache\`. Si cambias uno y no se actualiza, borra esa carpeta.
 - Para encontrar la ruta de un programa: clic derecho en su acceso directo → **Propiedades** → campo **Destino**.
 - Solo se pueden abrir las apps de esta lista. Desde el celular no se puede ejecutar ningún otro comando.
+- **`control_remoto`** (opcional, `true` por defecto): ponlo en `false` para desactivar ver la pantalla y mover el mouse desde el celular.
 
 ## Seguridad
 
 - Cada orden lleva el PIN. Tras 5 intentos fallidos, esa dirección queda bloqueada 60 segundos.
 - El firewall solo acepta conexiones de tu red local. No lo expongas a Internet (no abras el puerto en el router).
 - La conexión es HTTP sin cifrar, algo razonable dentro de tu casa. Usa una red WiFi con contraseña.
+- El control remoto da el mismo acceso que estar sentado frente a la PC. Cualquiera con el PIN y en tu red puede usarlo, así que no uses un PIN fácil. Si no lo quieres, desactívalo con `"control_remoto": false`.
 
 ## Notas
 
@@ -79,6 +81,11 @@ Todo está en `servidor\config.json` (se crea en la primera ejecución). Despué
 - **Volumen:** cada toque sube o baja 1. Mantén presionado para que siga cambiando, o usa la barra. Cambia el volumen general de Windows (el del altavoz predeterminado).
 - **Multimedia:** usa los controles de medios de Windows 10 u 11.
 - **Reiniciar y apagar** piden confirmación y se ejecutan un segundo y medio después, sin esperar a que cierres programas.
+- **Control remoto:** Equipo → Control remoto. Gira el iPhone para ver la pantalla más grande.
+  - *Táctil:* tocas donde quieres hacer clic. Mantener = clic derecho, arrastrar = mantener el clic (seleccionar, mover ventanas), dos dedos = desplazar.
+  - *Trackpad:* deslizas para mover el cursor como en una laptop. Toque = clic, toque con dos dedos = clic derecho, dos dedos deslizando = desplazar.
+  - El botón ⌘ muestra teclas especiales (Esc, Tab, Windows, flechas, copiar, pegar, Alt+Tab…) y el del teclado abre el teclado del iPhone para escribir en la PC (acentos y emojis incluidos).
+  - Se ve la pantalla principal, a unos 10–15 cuadros por segundo. Windows no deja capturar ni controlar la pantalla de bloqueo ni las ventanas de permisos de administrador (UAC).
 - **Registro:** con el arranque automático, los mensajes del servidor quedan en `servidor\controlpc.log`.
 
 ## Actualizar
