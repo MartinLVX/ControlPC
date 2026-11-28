@@ -107,7 +107,7 @@ def mover(x, y):
     px, py = _a_pixeles(x, y)
     if SIMULAR:
         _simulado.update(x=px, y=py)
-        historial.append(f"mover {px},{py}")
+        acciones._registrar(f"mover {px},{py}")
         return
     user32.SetCursorPos(px, py)
 
@@ -118,7 +118,7 @@ def mover_relativo(dx, dy):
     if SIMULAR:
         _simulado.update(x=min(max(_simulado["x"] + round(dx), 0), ancho - 1),
                          y=min(max(_simulado["y"] + round(dy), 0), alto - 1))
-        historial.append(f"mover {_simulado['x']},{_simulado['y']}")
+        acciones._registrar(f"mover {_simulado['x']},{_simulado['y']}")
         return
     punto = wintypes.POINT()
     user32.GetCursorPos(ctypes.byref(punto))
@@ -130,7 +130,7 @@ def boton(cual="izquierdo", accion="clic", veces=1):
     abajo, arriba = ((MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP) if cual == "derecho"
                      else (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP))
     if SIMULAR:
-        historial.append(f"{accion} {cual}" + (f" x{veces}" if veces > 1 else ""))
+        acciones._registrar(f"{accion} {cual}" + (f" x{veces}" if veces > 1 else ""))
         return
     if accion == "bajar":
         _enviar(_raton(abajo))
@@ -143,7 +143,7 @@ def boton(cual="izquierdo", accion="clic", veces=1):
 def rueda(pasos):
     """Positivo = hacia arriba. Un paso equivale a un clic de la rueda (120)."""
     if SIMULAR:
-        historial.append(f"rueda {pasos}")
+        acciones._registrar(f"rueda {pasos}")
         return
     _enviar(_raton(MOUSEEVENTF_WHEEL, int(round(float(pasos) * 120))))
 
@@ -154,7 +154,7 @@ def escribir(texto):
     """Escribe texto tal cual (acentos, ñ, emojis) con eventos Unicode."""
     texto = str(texto)[:500]
     if SIMULAR:
-        historial.append(f"escribir {texto}")
+        acciones._registrar(f"escribir {texto}")
         return
     entradas = []
     for caracter in texto:
@@ -184,7 +184,7 @@ def teclas(nombres):
         nombres = [nombres]
     codigos = [_vk(n) for n in list(nombres)[:4]]
     if SIMULAR:
-        historial.append("teclas " + "+".join(str(n).lower() for n in nombres))
+        acciones._registrar("teclas " + "+".join(str(n).lower() for n in nombres))
         return
     _enviar(*[_tecla(c) for c in codigos], *[_tecla(c, banderas=KEYEVENTF_KEYUP) for c in reversed(codigos)])
 
